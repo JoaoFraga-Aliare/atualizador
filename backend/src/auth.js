@@ -2,6 +2,13 @@ import crypto from 'node:crypto';
 
 export const CHANNELS = ['test', 'beta', 'production'];
 
+// Compara segredos em tempo constante; o hash iguala os tamanhos.
+export function sameSecret(value, expected) {
+  if (!expected) return false;
+  const digest = item => crypto.createHash('sha256').update(String(item ?? '')).digest();
+  return crypto.timingSafeEqual(digest(value), digest(expected));
+}
+
 export function hashPassword(password) {
   if (String(password || '').length < 8) throw new Error('password_too_short');
   const salt = crypto.randomBytes(16).toString('hex');

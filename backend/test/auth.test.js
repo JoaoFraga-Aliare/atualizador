@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openDatabase } from '../src/db.js';
-import { canAccess, ensureInitialAdmin, hashPassword, userScopes, verifyPassword } from '../src/auth.js';
+import { canAccess, ensureInitialAdmin, hashPassword, sameSecret, userScopes, verifyPassword } from '../src/auth.js';
 
 test('hashes and verifies passwords with a random salt', () => {
   const first = hashPassword('uma-senha-segura');
@@ -29,4 +29,13 @@ test('creates one initial admin and enforces operator scopes', t => {
   assert.equal(canAccess(scopes, productId, 'beta'), true);
   assert.equal(canAccess(scopes, productId, 'production'), false);
   assert.equal(canAccess(scopes, Number(productId) + 1, 'beta'), false);
+});
+
+test('compares secrets without accepting a missing expected value', () => {
+  assert.equal(sameSecret('chave-da-instalacao', 'chave-da-instalacao'), true);
+  assert.equal(sameSecret('chave-da-instalaca', 'chave-da-instalacao'), false);
+  assert.equal(sameSecret('', 'chave-da-instalacao'), false);
+  assert.equal(sameSecret(undefined, 'chave-da-instalacao'), false);
+  assert.equal(sameSecret('', ''), false);
+  assert.equal(sameSecret('qualquer', undefined), false);
 });

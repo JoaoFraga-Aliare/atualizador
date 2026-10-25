@@ -146,6 +146,11 @@ A especificação OpenAPI também está disponível em `http://localhost:3333/ap
   pelos terminais ficam em `DATABASE_BACKUPS_PATH` (padrão `./data/bancos`) e só
   saem pelas rotas autenticadas do painel. Na inicialização, backups antigos em
   `packages/bancos` são movidos para lá automaticamente.
+- Falhas de autenticação são limitadas por IP em janelas de 15 minutos e
+  respondem `429 too_many_attempts`: `LOGIN_MAX_FAILURES` (padrão 10, por IP e
+  usuário), `LOGIN_IP_MAX_FAILURES` (50, por IP) e
+  `INSTALLATION_KEY_MAX_FAILURES` (30, chave de instalação inválida). Só as
+  falhas contam, então vários caixas atrás do mesmo IP não são bloqueados.
 - Nunca sobrescreva um ZIP publicado.
 - Evolua a chave global para uma chave por cliente.
 - Adicione assinatura digital; SHA-256 valida integridade, não autoria.

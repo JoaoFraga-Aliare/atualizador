@@ -133,6 +133,34 @@ Resposta resumida:
 
 Se `currentThemeValid` for `false`, o ERP deve baixar as imagens indicadas, aplicar cores e fonte e substituir o ID/hash armazenado pelos valores retornados. A validação considera tanto uma troca de variante por data quanto alterações feitas na configuração.
 
+## Assinatura das publicações
+
+Cada publicação é assinada com Ed25519. A chave privada fica em
+`PACKAGE_SIGNING_KEY_PATH` (padrão `./data/package-signing-key.pem`) e é criada
+na primeira execução. **Faça backup desse arquivo**: se ele for perdido, uma
+nova chave é gerada e os atualizadores que conhecem só a antiga passam a
+recusar todas as atualizações. Na inicialização, publicações sem assinatura ou
+assinadas com outra chave são assinadas com a chave atual.
+
+A chave pública fica em `GET /api/v1/packages/signing-key` (`publicKey` são os
+32 bytes crus em Base64) e deve ser embutida no atualizador. A resposta do
+`/updates/check` traz `signature`, `signatureKeyId`, `signatureAlgorithm` e
+`signedPayloadFormat`. O texto assinado tem uma linha por campo, separadas por
+`\n`, em UTF-8 e sem `\n` final:
+
+```text
+agrosys-release-v1
+releaseId=42
+product=pdv
+channel=production
+version=2.3.1.0
+sha256=<sha256 do arquivo, minúsculo>
+sizeBytes=1048576
+```
+
+O atualizador remonta esse texto com o produto e o canal que consultou, valida
+a assinatura e depois confere o SHA-256 e o tamanho do arquivo baixado.
+
 ## Documentação da API
 
 Com o backend em execução, acesse o Swagger UI em `http://localhost:3333/docs/`.

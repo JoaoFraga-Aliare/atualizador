@@ -52,6 +52,8 @@ export function openDatabase(databasePath) {
   ensureColumn(db, 'release', 'executable_sha256', 'TEXT');
   ensureColumn(db, 'release', 'deleted_at', 'TEXT');
   ensureColumn(db, 'release', 'deleted_by', 'INTEGER');
+  ensureColumn(db, 'release', 'signature', 'TEXT');
+  ensureColumn(db, 'release', 'signature_key_id', 'TEXT');
   ensureColumn(db, 'app_user', 'api_token_hash', 'TEXT');
   ensureColumn(db, 'app_user', 'api_token_created_at', 'TEXT');
   ensureColumn(db, 'ci_artifact', 'user_id', 'INTEGER');

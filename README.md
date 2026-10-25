@@ -142,6 +142,10 @@ A especificação OpenAPI também está disponível em `http://localhost:3333/ap
 
 - Use HTTPS e troque todas as credenciais.
 - Restrinja escrita em `packages` ao back-end.
+- Tudo em `packages` é público em `/downloads`. Os backups de banco enviados
+  pelos terminais ficam em `DATABASE_BACKUPS_PATH` (padrão `./data/bancos`) e só
+  saem pelas rotas autenticadas do painel. Na inicialização, backups antigos em
+  `packages/bancos` são movidos para lá automaticamente.
 - Nunca sobrescreva um ZIP publicado.
 - Evolua a chave global para uma chave por cliente.
 - Adicione assinatura digital; SHA-256 valida integridade, não autoria.

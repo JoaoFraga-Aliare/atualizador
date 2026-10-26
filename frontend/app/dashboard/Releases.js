@@ -33,6 +33,7 @@ import {
   Download as DownloadIcon,
   LockOpen as LockOpenIcon,
   MoreVert as MoreVertIcon,
+  Percent as PercentIcon,
   Replay as ReplayIcon,
   Visibility as VisibilityIcon
 } from '@mui/icons-material';
@@ -86,6 +87,19 @@ function ReleasedVersions({ items, products, clients = [], create, done }) {
     try {
       await api(`/admin/releases/${r.id}`, { method: 'PATCH', body: JSON.stringify({ blocked: !r.blocked }) });
       done(r.blocked ? 'Atualização liberada' : 'Atualização bloqueada');
+    } catch (e) {
+      done(e.message);
+    }
+  }
+  async function changeRollout(r) {
+    const value = prompt('Percentual de terminais que recebem esta versão (1 a 100):', r.rollout_percent ?? 100);
+    if (value === null) return;
+    try {
+      await api(`/admin/releases/${r.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ rolloutPercent: Number(value) })
+      });
+      done(`Liberação gradual ajustada para ${Number(value)}%`);
     } catch (e) {
       done(e.message);
     }
@@ -158,7 +172,7 @@ function ReleasedVersions({ items, products, clients = [], create, done }) {
             r.product_name,
             r.version,
             <Chip key="c" size="small" label={r.channel} />,
-            r.targets,
+            (r.rollout_percent ?? 100) < 100 ? `${r.targets} · ${r.rollout_percent}%` : r.targets,
             r.terminal_count || 0,
             <Chip
               key="s"
@@ -166,7 +180,15 @@ function ReleasedVersions({ items, products, clients = [], create, done }) {
               color={r.deleted_at ? 'default' : r.blocked ? 'error' : r.active ? 'success' : 'default'}
               label={r.deleted_at ? 'Excluída' : r.blocked ? 'Bloqueada' : r.active ? 'Ativa' : 'Inativa'}
             />,
-            <Actions key={r.id} r={r} view={view} change={change} copy={setCopying} remove={askRemove} />
+            <Actions
+              key={r.id}
+              r={r}
+              view={view}
+              change={change}
+              copy={setCopying}
+              rollout={changeRollout}
+              remove={askRemove}
+            />
           ])}
         />
       </Stack>
@@ -176,7 +198,7 @@ function ReleasedVersions({ items, products, clients = [], create, done }) {
     </>
   );
 }
-function Actions({ r, view, change, copy, remove }) {
+function Actions({ r, view, change, copy, rollout, remove }) {
   const [a, setA] = useState(null),
     run = fn => {
       setA(null);
@@ -215,6 +237,7 @@ function Actions({ r, view, change, copy, remove }) {
           text={r.blocked ? 'Liberar' : 'Bloquear'}
           click={() => run(change)}
         />
+        <Item icon={<PercentIcon />} text="Liberação gradual" click={() => run(rollout)} />
         <Item icon={<ReplayIcon />} text="Recadastrar" click={() => run(copy)} />
         <Divider />
         <Item icon={<DeleteIcon color="error" />} text="Excluir" click={() => run(remove)} color="error.main" />
@@ -231,6 +254,7 @@ function CopyDialog({ release, clients, close, done }) {
       mandatory: Boolean(r?.mandatory),
       deadlineAt: '',
       minimumVersion: r?.minimum_version || '',
+      rolloutPercent: 100,
       notes: r?.notes || '',
       technicalNotes: r?.technical_notes || '',
       showNotesPdv: Boolean(r?.show_notes_pdv)
@@ -322,6 +346,14 @@ function CopyDialog({ release, clients, close, done }) {
             onChange={e => set('minimumVersion', e.target.value)}
           />
           <TextField
+            type="number"
+            label="Liberação gradual (%)"
+            helperText="Percentual de terminais que recebem a versão; aumente depois para ampliar."
+            inputProps={{ min: 1, max: 100 }}
+            value={form.rolloutPercent}
+            onChange={e => set('rolloutPercent', e.target.value)}
+          />
+          <TextField
             multiline
             rows={3}
             label="Nota do painel"
@@ -383,6 +415,7 @@ function Details({ value, close }) {
               ['Tipo', value.artifact_type === 'sql' ? 'Script SQL' : 'Pacote ZIP'],
               ['Canal', value.channel],
               ['Destino', value.targets],
+              ['Liberação gradual', `${value.rollout_percent ?? 100}% dos terminais`],
               ['Arquivo para download', value.original_name || value.file_path],
               ['Tamanho', `${(value.size_bytes / 1024 / 1024).toFixed(2)} MB`],
               ['Versão mínima', value.minimum_version || '-'],

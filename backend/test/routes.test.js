@@ -571,3 +571,56 @@ test('panel sessions use an httpOnly cookie and can be revoked', async t => {
   });
   assert.equal((await api.json('/api/v1/admin/me', { headers: maria })).status, 401);
 });
+
+test('gradual rollout, health check and JSON access logs', async t => {
+  const api = await startServer(t);
+  const admin = await api.login();
+  const productId = await createProduct(api, admin);
+  assert.equal(
+    (await publish(api, admin, { productId, version: '2.0.0', rolloutPercent: '0' })).body.error,
+    'invalid_rollout_percent'
+  );
+  const release = await publish(api, admin, { productId, version: '2.0.0', rolloutPercent: '30' });
+  assert.equal(release.status, 201, JSON.stringify(release.body));
+  const terminalIds = Array.from({ length: 40 }, (_, i) => `terminal-rollout-${i}`);
+  const receives = async () => {
+    const result = [];
+    for (const id of terminalIds) if ((await api.check({ terminal: { id, name: id } })).body.available) result.push(id);
+    return result;
+  };
+  const partial = await receives();
+  assert.ok(partial.length > 0 && partial.length < terminalIds.length, `${partial.length} de ${terminalIds.length}`);
+  const patch = body =>
+    api.json(`/api/v1/admin/releases/${release.body.id}`, {
+      method: 'PATCH',
+      headers: { ...admin, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  assert.equal((await patch({ rolloutPercent: 60 })).status, 200);
+  const wider = await receives();
+  assert.ok(
+    partial.every(id => wider.includes(id)),
+    'quem ja recebia continua recebendo'
+  );
+  assert.equal((await patch({ rolloutPercent: 100 })).status, 200);
+  assert.equal((await receives()).length, terminalIds.length);
+  assert.equal((await patch({ rolloutPercent: 101 })).status, 400);
+
+  const health = await api.json('/health');
+  assert.equal(health.status, 200);
+  assert.equal(health.body.checks.database, 'ok');
+  assert.ok(health.body.checks.packages.freeBytes > 0);
+  assert.match(
+    api.output(),
+    /\{"time":"[^"]+","level":"info","method":"POST","path":"\/api\/v1\/updates\/check","status":200/
+  );
+});
+
+test('health check reports 503 when free space is below the threshold', async t => {
+  const api = await startServer(t, { env: { HEALTH_MIN_FREE_MB: String(1024 * 1024 * 1024) } });
+  const health = await api.json('/health');
+  assert.equal(health.status, 503);
+  assert.equal(health.body.ok, false);
+  assert.equal(health.body.checks.database, 'ok');
+  assert.equal(health.body.checks.packages.ok, false);
+});

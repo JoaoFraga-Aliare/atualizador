@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { normalizeFutureDeadline } from '../release.js';
+import { normalizeFutureDeadline, normalizeRolloutPercent } from '../release.js';
 import { CHANNELS, canAccess } from '../auth.js';
 import { addGeneratedManifest } from '../package-manifest.js';
 import { releaseAnalytics, softDeleteRelease } from '../release-history.js';
@@ -197,6 +197,10 @@ export function registerAdminReleaseRoutes(app, ctx) {
             req.user.id
           );
         const releaseId = result.lastInsertRowid;
+        db.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
+          normalizeRolloutPercent(req.body.rolloutPercent),
+          releaseId
+        );
         if (artifactType === 'package') {
           const source = ciArtifact ? path.resolve(packagesPath, ciArtifact.file_path) : file.path;
           if (!source.startsWith(packagesPath + path.sep) || !fs.existsSync(source))
@@ -258,8 +262,19 @@ export function registerAdminReleaseRoutes(app, ctx) {
       return res.status(403).json({ error: 'scope_denied' });
     const active = req.body.active === undefined ? release.active : req.body.active ? 1 : 0,
       blocked = req.body.blocked === undefined ? release.blocked : req.body.blocked ? 1 : 0;
-    db.prepare('UPDATE release SET active=?,blocked=? WHERE id=?').run(active, blocked, release.id);
-    res.json({ updated: true, active: Boolean(active), blocked: Boolean(blocked) });
+    let rolloutPercent;
+    try {
+      rolloutPercent = normalizeRolloutPercent(req.body.rolloutPercent, release.rollout_percent);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+    db.prepare('UPDATE release SET active=?,blocked=?,rollout_percent=? WHERE id=?').run(
+      active,
+      blocked,
+      rolloutPercent,
+      release.id
+    );
+    res.json({ updated: true, active: Boolean(active), blocked: Boolean(blocked), rolloutPercent });
   });
   app.delete('/api/v1/admin/releases/:id', adminAuth, (req, res) => {
     const release = db
@@ -345,6 +360,10 @@ export function registerAdminReleaseRoutes(app, ctx) {
           req.user.id
         );
       const id = result.lastInsertRowid;
+      db.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
+        normalizeRolloutPercent(req.body.rolloutPercent),
+        id
+      );
       if (packageArtifact) {
         const manifest = addGeneratedManifest(sourceFile, final, {
           releaseId: id,

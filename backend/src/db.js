@@ -25,6 +25,11 @@ const MIGRATIONS = [
         CREATE TABLE admin_session(id TEXT PRIMARY KEY,user_id INTEGER NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT NOT NULL,revoked_at TEXT,ip TEXT,user_agent TEXT,FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE);
         CREATE INDEX idx_admin_session_user ON admin_session(user_id,revoked_at);
       `)
+  },
+  {
+    version: 5,
+    name: 'liberacao gradual das publicacoes',
+    up: db => db.exec('ALTER TABLE release ADD COLUMN rollout_percent INTEGER NOT NULL DEFAULT 100')
   }
 ];
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;

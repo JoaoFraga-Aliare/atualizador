@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareVersions } from '../version.js';
-import { getReleasePolicy } from '../release.js';
+import { getReleasePolicy, inRollout } from '../release.js';
 import { CHANNELS } from '../auth.js';
 import { SIGNATURE_ALGORITHM, SIGNED_PAYLOAD_FORMAT } from '../release-signature.js';
 import { hashFileSync, textValue, safeZipName, moveFile } from '../lib/util.js';
@@ -19,6 +19,7 @@ export function registerTerminalRoutes(app, ctx) {
     terminalKeys,
     db,
     databaseBackupsPath,
+    packagesPath,
     downloadBase,
     upload,
     signingKey,
@@ -47,7 +48,28 @@ export function registerTerminalRoutes(app, ctx) {
     );
     return { client: c, terminal: db.prepare('SELECT * FROM terminal WHERE external_id=?').get(terminal.id) };
   }
-  app.get('/health', (_q, r) => r.json({ ok: true }));
+  // 503 quando o banco nao responde ou falta espaco para pacotes e backups (HEALTH_MIN_FREE_MB).
+  app.get('/health', (_q, res) => {
+    const minFree = Number(process.env.HEALTH_MIN_FREE_MB ?? 1024) * 1024 * 1024,
+      checks = {};
+    try {
+      db.prepare('SELECT 1').get();
+      checks.database = 'ok';
+    } catch (e) {
+      checks.database = e.message;
+    }
+    for (const [name, folder] of Object.entries({ packages: packagesPath, databaseBackups: databaseBackupsPath })) {
+      try {
+        const stats = fs.statfsSync(folder),
+          freeBytes = stats.bavail * stats.bsize;
+        checks[name] = { freeBytes, ok: freeBytes >= minFree };
+      } catch (e) {
+        checks[name] = { error: e.message, ok: false };
+      }
+    }
+    const ok = checks.database === 'ok' && checks.packages.ok && checks.databaseBackups.ok;
+    res.status(ok ? 200 : 503).json({ ok, checks });
+  });
   app.get('/api/v1/packages/signing-key', (_q, res) =>
     res.json({
       algorithm: SIGNATURE_ALGORITHM,
@@ -95,7 +117,8 @@ export function registerTerminalRoutes(app, ctx) {
         .prepare(
           `SELECT DISTINCT r.* FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id WHERE p.code=? AND r.channel=? AND r.active=1 AND r.blocked=0 AND (rt.target_type='all' OR (rt.target_type='client' AND rt.client_id=?)) ORDER BY r.published_at DESC,r.id DESC`
         )
-        .all(product, channel, reg.client.id);
+        .all(product, channel, reg.client.id)
+        .filter(r => inRollout(r, reg.terminal.external_id));
       const currentRelease = currentExecutableHash
           ? db
               .prepare(

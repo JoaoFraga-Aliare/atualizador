@@ -67,7 +67,24 @@ export function createApp() {
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
   app.use(helmet());
   app.use(express.json({ limit: process.env.ERROR_JSON_LIMIT || '12mb' }));
-  app.use(morgan('combined'));
+  // Log de acesso em JSON (uma linha por requisicao); LOG_FORMAT=combined volta ao formato do Apache.
+  app.use(
+    process.env.LOG_FORMAT === 'combined'
+      ? morgan('combined')
+      : morgan((tokens, req, res) =>
+          JSON.stringify({
+            time: tokens.date(req, res, 'iso'),
+            level: 'info',
+            method: tokens.method(req, res),
+            path: req.originalUrl.split('?')[0],
+            status: Number(tokens.status(req, res)) || null,
+            ms: Number(tokens['response-time'](req, res)) || null,
+            bytes: Number(tokens.res(req, res, 'content-length')) || null,
+            ip: req.ip,
+            userAgent: tokens['user-agent'](req, res)
+          })
+        )
+  );
   // Os limites contam so falhas: terminais da mesma loja costumam sair pelo mesmo IP.
   const failureLimit = (limit, options) =>
     rateLimit({
@@ -136,7 +153,15 @@ export function createApp() {
   app.use((e, _q, res, _n) => {
     const status = Number(e.status || e.statusCode);
     if (status === 404) return res.status(404).json({ error: 'not_found' });
-    console.error(e);
+    console.error(
+      JSON.stringify({
+        time: new Date().toISOString(),
+        level: 'error',
+        path: _q.originalUrl?.split('?')[0],
+        message: e.message,
+        stack: e.stack
+      })
+    );
     res.status(status >= 400 && status < 500 ? status : 400).json({ error: e.message || 'internal_error' });
   });
   const server = http.createServer(app);

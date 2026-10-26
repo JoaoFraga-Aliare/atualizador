@@ -30,6 +30,7 @@ const emptyForm = {
   mandatory: false,
   deadlineAt: '',
   minimumVersion: '',
+  rolloutPercent: 100,
   notes: '',
   technicalNotes: '',
   showNotesPdv: false
@@ -204,6 +205,14 @@ export default function ReleaseDialog({ open, close, clients, products, done, se
             InputLabelProps={{ shrink: true }}
             value={form.deadlineAt}
             onChange={e => set('deadlineAt', e.target.value)}
+          />
+          <TextField
+            type="number"
+            label="Liberação gradual (%)"
+            helperText="Percentual de terminais que recebem a versão; aumente depois para ampliar."
+            inputProps={{ min: 1, max: 100 }}
+            value={form.rolloutPercent}
+            onChange={e => set('rolloutPercent', e.target.value)}
           />
           <TextField
             label="Notas"

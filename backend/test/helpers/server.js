@@ -24,6 +24,7 @@ export async function startServer(t, overrides = {}) {
     LOGIN_MAX_FAILURES: '1000',
     LOGIN_IP_MAX_FAILURES: '1000',
     INSTALLATION_KEY_MAX_FAILURES: '1000',
+    HEALTH_MIN_FREE_MB: '0',
     ...overrides.env
   };
   const child = spawn(process.execPath, ['src/index.js'], { cwd: backendDir, env, stdio: ['ignore', 'pipe', 'pipe'] });

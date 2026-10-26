@@ -1,19 +1,20 @@
+// A sessao vai no cookie httpOnly definido no login; o navegador o envia sozinho.
+function sessionExpired() {
+  localStorage.removeItem('allowedChannels');
+  location.href = '/';
+  throw new Error('Sessão expirada');
+}
+
 export async function api(path, options = {}) {
-  const token = localStorage.getItem('token');
   const response = await fetch(`/api/v1${path}`, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      Authorization: `Bearer ${token}`,
       ...options.headers
     }
   });
-  if (response.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('allowedChannels');
-    location.href = '/';
-    throw new Error('Sessão expirada');
-  }
+  if (response.status === 401) sessionExpired();
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Falha na requisição');
@@ -22,14 +23,8 @@ export async function api(path, options = {}) {
 }
 
 export async function apiBlob(path) {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (response.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('allowedChannels');
-    location.href = '/';
-    throw new Error('Sessão expirada');
-  }
+  const response = await fetch(`/api/v1${path}`, { credentials: 'same-origin' });
+  if (response.status === 401) sessionExpired();
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Falha na requisição');

@@ -37,9 +37,7 @@ import {
 const fmt = value =>
   value ? new Date(value.includes('T') ? value : value.replace(' ', 'T') + 'Z').toLocaleString('pt-BR') : '-';
 async function download(item) {
-  const response = await fetch(`/api/v1/admin/artifacts/${item.id}/download`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-  });
+  const response = await fetch(`/api/v1/admin/artifacts/${item.id}/download`, { credentials: 'same-origin' });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Falha no download');
   const url = URL.createObjectURL(await response.blob()),
     a = document.createElement('a');

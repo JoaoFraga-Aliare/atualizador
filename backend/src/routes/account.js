@@ -1,18 +1,25 @@
 import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import { CHANNELS, userScopes, verifyPassword } from '../auth.js';
+import { SESSION_COOKIE, clearSessionCookie, readCookie, setSessionCookie } from '../sessions.js';
+import { bearerToken } from '../terminal-keys.js';
 
 // Login do painel, perfil e tokens de API do usuario.
 export function registerAccountRoutes(app, ctx) {
-  const { db, adminAuth, loginIpLimiter, loginUserLimiter } = ctx;
+  const { sessions, db, adminAuth, loginIpLimiter, loginUserLimiter } = ctx;
   app.post('/api/v1/auth/login', loginIpLimiter, loginUserLimiter, (req, res) => {
     const user = db.prepare('SELECT * FROM app_user WHERE username=?').get(String(req.body?.user || '').trim());
     if (!user?.active || !verifyPassword(req.body?.password, user.password_hash))
       return res.status(401).json({ error: 'invalid_credentials' });
-    res.json({
-      token: jwt.sign({ sub: user.id }, process.env.JWT_SECRET, { expiresIn: '8h' }),
-      user: { id: user.id, username: user.username, name: user.name, role: user.role }
-    });
+    const token = sessions.create(user, req);
+    setSessionCookie(req, res, token);
+    res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+  });
+  app.post('/api/v1/auth/logout', (req, res) => {
+    try {
+      sessions.revoke(sessions.verify(bearerToken(req) || readCookie(req, SESSION_COOKIE)).sessionId);
+    } catch {}
+    clearSessionCookie(req, res);
+    res.json({ loggedOut: true });
   });
   app.get('/api/v1/admin/me/api-token', adminAuth, (req, res) => {
     const token = db.prepare('SELECT api_token_created_at FROM app_user WHERE id=?').get(req.user.id),

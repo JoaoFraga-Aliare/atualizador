@@ -16,6 +16,15 @@ const MIGRATIONS = [
         ALTER TABLE terminal ADD COLUMN api_key_confirmed_at TEXT;
         CREATE UNIQUE INDEX idx_terminal_api_key ON terminal(api_key_hash) WHERE api_key_hash IS NOT NULL;
       `)
+  },
+  {
+    version: 4,
+    name: 'sessoes revogaveis do painel',
+    up: db =>
+      db.exec(`
+        CREATE TABLE admin_session(id TEXT PRIMARY KEY,user_id INTEGER NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at TEXT NOT NULL,revoked_at TEXT,ip TEXT,user_agent TEXT,FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE);
+        CREATE INDEX idx_admin_session_user ON admin_session(user_id,revoked_at);
+      `)
   }
 ];
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;

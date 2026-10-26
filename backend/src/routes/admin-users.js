@@ -2,7 +2,7 @@ import { CHANNELS, hashPassword } from '../auth.js';
 
 // Painel: usuarios.
 export function registerAdminUserRoutes(app, ctx) {
-  const { db, adminAuth } = ctx;
+  const { sessions, db, adminAuth } = ctx;
   app.get('/api/v1/admin/users', adminAuth, (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
     res.json(
@@ -43,6 +43,7 @@ export function registerAdminUserRoutes(app, ctx) {
     if (Number(req.params.id) === req.user.id && req.body.active === false)
       return res.status(400).json({ error: 'cannot_disable_self' });
     db.prepare('UPDATE app_user SET active=? WHERE id=?').run(req.body.active ? 1 : 0, req.params.id);
+    if (!req.body.active) sessions.revokeUser(Number(req.params.id));
     res.json({ updated: true });
   });
 }

@@ -20,6 +20,7 @@ import { createScopeHelpers } from './lib/scopes.js';
 import { createDatabaseBackups } from './database-backups.js';
 import { createAuthMiddleware } from './middleware.js';
 import { createTerminalKeys } from './terminal-keys.js';
+import { createSessions } from './sessions.js';
 import { registerTerminalRoutes } from './routes/terminal.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerCiUploadRoutes } from './routes/ci-upload.js';
@@ -61,7 +62,8 @@ export function createApp() {
   const backups = createDatabaseBackups({ db, packagesPath, databaseBackupsPath });
   backups.migrateLegacyDatabaseBackups();
   const terminalKeys = createTerminalKeys(db);
-  const { adminAuth, installationAuth, ciAuth } = createAuthMiddleware(db, terminalKeys);
+  const sessions = createSessions(db);
+  const { adminAuth, installationAuth, ciAuth } = createAuthMiddleware(db, terminalKeys, sessions);
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
   app.use(helmet());
   app.use(express.json({ limit: process.env.ERROR_JSON_LIMIT || '12mb' }));
@@ -101,6 +103,7 @@ export function createApp() {
   );
   const ctx = {
     terminalKeys,
+    sessions,
     db,
     packagesPath,
     incomingPath,

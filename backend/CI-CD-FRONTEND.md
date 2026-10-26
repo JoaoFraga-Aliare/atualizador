@@ -53,14 +53,13 @@ Content-Type: application/json
 }
 ```
 
-Guardar o valor `token` para as chamadas do portal:
+O login também grava o cookie `central_session` (httpOnly, SameSite=Strict,
+8 horas). No navegador, o portal não guarda o JWT: as chamadas usam
+`credentials: 'same-origin'` e o cookie vai sozinho. `POST /api/v1/auth/logout`
+revoga a sessão e apaga o cookie. Desativar o usuário revoga as sessões dele.
 
-```js
-const jwt = response.token;
-const authHeaders = {
-  Authorization: `Bearer ${jwt}`
-};
-```
+Scripts fora do navegador podem continuar usando o `token` retornado como
+`Authorization: Bearer <JWT>`; ele vale enquanto a sessão não for revogada.
 
 ## 2. Produtos disponíveis
 

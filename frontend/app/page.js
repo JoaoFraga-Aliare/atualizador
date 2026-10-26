@@ -9,7 +9,9 @@ export default function Login() {
     [password, setPassword] = useState(''),
     [error, setError] = useState('');
   useEffect(() => {
-    if (localStorage.getItem('token')) router.replace('/dashboard/');
+    fetch('/api/v1/admin/me', { credentials: 'same-origin' })
+      .then(response => response.ok && router.replace('/dashboard/'))
+      .catch(() => {});
   }, [router]);
   async function submit(event) {
     event.preventDefault();
@@ -21,7 +23,7 @@ export default function Login() {
     });
     if (!response.ok) return setError('Usuário ou senha inválidos');
     const data = await response.json();
-    localStorage.setItem('token', data.token);
+    localStorage.removeItem('token');
     localStorage.setItem('user', JSON.stringify(data.user));
     router.push('/dashboard/');
   }

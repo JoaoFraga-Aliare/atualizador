@@ -514,3 +514,60 @@ test('TERMINAL_KEY_ENFORCEMENT=off keeps the global key valid during the transit
   assert.equal(check.status, 200);
   assert.equal(check.body.terminalKey, undefined);
 });
+
+test('panel sessions use an httpOnly cookie and can be revoked', async t => {
+  const api = await startServer(t);
+  const login = await api.request('/api/v1/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'admin', password: api.env.ADMIN_PASSWORD })
+  });
+  assert.equal(login.status, 200);
+  const setCookie = login.headers.get('set-cookie');
+  assert.match(setCookie, /central_session=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+  const { token } = await login.json();
+  const cookie = { Cookie: setCookie.split(';')[0] };
+
+  assert.equal((await api.json('/api/v1/admin/me', { headers: cookie })).status, 200);
+  const crossSite = await api.json('/api/v1/admin/products', {
+    method: 'POST',
+    headers: { ...cookie, 'Content-Type': 'application/json', Origin: 'https://outro-site.example' },
+    body: JSON.stringify({ code: 'x', name: 'X' })
+  });
+  assert.equal(crossSite.status, 403);
+  assert.equal(crossSite.body.error, 'invalid_origin');
+  const sameSite = await api.json('/api/v1/admin/products', {
+    method: 'POST',
+    headers: { ...cookie, 'Content-Type': 'application/json', Origin: api.base },
+    body: JSON.stringify({ code: 'pdv', name: 'PDV' })
+  });
+  assert.equal(sameSite.status, 201);
+
+  const logout = await api.request('/api/v1/auth/logout', { method: 'POST', headers: cookie });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie'), /central_session=;/);
+  assert.equal((await api.json('/api/v1/admin/me', { headers: cookie })).status, 401);
+  assert.equal((await api.json('/api/v1/admin/me', { headers: { Authorization: `Bearer ${token}` } })).status, 401);
+
+  const admin = await api.login();
+  const user = await api.post(
+    '/api/v1/admin/users',
+    { username: 'maria', name: 'Maria', password: 'senha-maria-1', role: 'admin' },
+    admin
+  );
+  const maria = await api.login('maria', 'senha-maria-1');
+  assert.equal((await api.json('/api/v1/admin/me', { headers: maria })).status, 200);
+  await api.json(`/api/v1/admin/users/${user.body.id}`, {
+    method: 'PATCH',
+    headers: { ...admin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: false })
+  });
+  await api.json(`/api/v1/admin/users/${user.body.id}`, {
+    method: 'PATCH',
+    headers: { ...admin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: true })
+  });
+  assert.equal((await api.json('/api/v1/admin/me', { headers: maria })).status, 401);
+});

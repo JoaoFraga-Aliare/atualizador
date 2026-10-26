@@ -1,6 +1,5 @@
 import { copyFile, access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import process from 'node:process';
 
 async function exists(file) {
   try {

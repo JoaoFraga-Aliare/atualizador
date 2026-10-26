@@ -91,9 +91,8 @@ export default function Dashboard() {
     }
   }
   useEffect(() => {
-    if (!localStorage.getItem('token')) router.replace('/');
-    else load();
-  }, [router]);
+    load();
+  }, []);
   async function showClient(c) {
     try {
       setClient(c);
@@ -186,7 +185,8 @@ export default function Dashboard() {
             </MenuItem>
             <Divider />
             <MenuItem
-              onClick={() => {
+              onClick={async () => {
+                await api('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
                 localStorage.clear();
                 router.push('/');
               }}

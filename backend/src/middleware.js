@@ -1,20 +1,36 @@
 import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import { userScopes } from './auth.js';
 import { bearerToken, requestTerminalId } from './terminal-keys.js';
+import { SESSION_COOKIE, readCookie } from './sessions.js';
 
-export function createAuthMiddleware(db, terminalKeys) {
+export function createAuthMiddleware(db, terminalKeys, sessions) {
+  // Painel: cookie httpOnly da sessao (navegador) ou Bearer com o mesmo JWT (scripts e testes).
   const adminAuth = (req, res, next) => {
+    let session;
+    const header = bearerToken(req),
+      cookie = readCookie(req, SESSION_COOKIE);
     try {
-      const token = jwt.verify((req.get('authorization') || '').replace(/^Bearer /, ''), process.env.JWT_SECRET);
-      const user = db.prepare('SELECT id,username,name,role,active FROM app_user WHERE id=?').get(token.sub);
-      if (!user?.active) throw new Error();
-      req.user = user;
-      req.scopes = userScopes(db, user);
-      next();
+      session = sessions.verify(header || cookie);
     } catch {
-      res.status(401).json({ error: 'unauthorized' });
+      return res.status(401).json({ error: 'unauthorized' });
     }
+    // SameSite=Strict ja barra outro site; a origem e conferida tambem nas alteracoes feitas pelo cookie.
+    if (!header && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const origin = req.get('origin');
+      let sameOrigin = true;
+      try {
+        sameOrigin = !origin || new URL(origin).hostname === req.hostname;
+      } catch {
+        sameOrigin = false;
+      }
+      if (!sameOrigin) return res.status(403).json({ error: 'invalid_origin' });
+    }
+    const user = db.prepare('SELECT id,username,name,role,active FROM app_user WHERE id=?').get(session.userId);
+    if (!user?.active) return res.status(401).json({ error: 'unauthorized' });
+    req.user = user;
+    req.session = session;
+    req.scopes = userScopes(db, user);
+    next();
   };
   // Aceita a chave global ou a chave do terminal; rotas multipart repetem a checagem depois de ler o corpo.
   const installationAuth = (req, res, next) => {

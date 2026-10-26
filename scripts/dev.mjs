@@ -1,8 +1,13 @@
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 
+// A API fica sempre na 3333 (destino do proxy do Next); PORT do ambiente vale so para o painel.
 const children = [
-  spawn('npm', ['run', 'dev', '--prefix', 'backend'], { stdio: 'inherit', shell: true }),
+  spawn('npm', ['run', 'dev', '--prefix', 'backend'], {
+    stdio: 'inherit',
+    shell: true,
+    env: { ...process.env, PORT: '3333' }
+  }),
   spawn('npm', ['run', 'dev', '--prefix', 'frontend'], { stdio: 'inherit', shell: true })
 ];
 

@@ -18,14 +18,7 @@ export async function api(path, options = {}) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Falha na requisição');
   }
-  const data = await response.json();
-  if (path === '/admin/me') {
-    const allowed = data.scopes?.all ? ['test', 'beta', 'production'] : data.scopes?.channels || [];
-    localStorage.setItem('allowedChannels', JSON.stringify(allowed));
-  }
-  if (/^\/admin\/releases\/\d+\/details$/.test(path))
-    data.version = `${data.version} — By ${data.published_by_name || 'Não informado'}`;
-  return data;
+  return response.json();
 }
 
 export async function apiBlob(path) {

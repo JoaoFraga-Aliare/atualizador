@@ -1,195 +1,50 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '../../lib/api';
-import Errors from './Errors';
-import ClientTerminalsDialog from './ClientTerminalsDialog';
-import NotificationsBell from './NotificationsBell';
-import ApiTokenDialog from './ProfileTokenDialog';
-import CiCdReleaseDialog from './ReleaseDialog';
-import CiArtifacts from './CiArtifacts';
-import ProductThemeDialog from './ProductThemeDialog';
 import {
   Alert,
   AppBar,
   Box,
-  Button as MuiButton,
-  Chip as MuiChip,
+  Button,
   Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  FormControl,
-  FormControlLabel,
   IconButton,
-  InputLabel,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
-  Paper as MuiPaper,
-  Select,
+  Paper,
   Stack,
-  Switch,
   Tab,
   Tabs,
-  TablePagination,
-  TextField,
   Toolbar,
   Tooltip,
   Typography
 } from '@mui/material';
 import {
   AccountCircle as AccountCircleIcon,
-  Add as AddIcon,
-  Block as BlockIcon,
-  BugReport as BugReportIcon,
-  Delete as DeleteIcon,
-  Download as DownloadIcon,
   Devices as DevicesIcon,
-  Home as HomeIcon,
   Inventory2 as InventoryIcon,
   LockOpen as LockOpenIcon,
-  MoreVert as MoreVertIcon,
   People as PeopleIcon,
-  Replay as ReplayIcon,
-  Visibility as VisibilityIcon,
   ReceiptLong as ReceiptLongIcon
 } from '@mui/icons-material';
-const allChannels = ['test', 'beta', 'production'],
-  allowedChannels = () => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('allowedChannels'));
-      return Array.isArray(stored) ? allChannels.filter(channel => stored.includes(channel)) : allChannels;
-    } catch {
-      return allChannels;
-    }
-  },
-  channels = { map: callback => allowedChannels().map(callback) },
-  fmt = v => (v ? new Date(v.includes('T') ? v : v.replace(' ', 'T') + 'Z').toLocaleString('pt-BR') : '-'),
-  fmtDay = v => (v ? new Date(v + 'T12:00:00').toLocaleDateString('pt-BR') : '-');
-const channelChip = channel =>
-  ({
-    test: { bgcolor: '#7b1fa2', color: '#fff' },
-    beta: { bgcolor: '#1976d2', color: '#fff' },
-    production: { bgcolor: '#2e7d32', color: '#fff' }
-  })[channel] || {};
-function Chip(props) {
-  return <MuiChip {...props} sx={{ ...channelChip(props.label), ...props.sx }} />;
-}
-function Button({ children, ...props }) {
-  if (children === 'Publicar versão')
-    return (
-      <Tooltip title="Publicar versão">
-        <span>
-          <IconButton color="primary" {...props} variant={undefined}>
-            <AddIcon />
-          </IconButton>
-        </span>
-      </Tooltip>
-    );
-  if (props.startIcon?.type === AccountCircleIcon)
-    return (
-      <>
-        <NotificationsBell />
-        <MuiButton {...props}>{children}</MuiButton>
-      </>
-    );
-  return <MuiButton {...props}>{children}</MuiButton>;
-}
-const statsListeners = new Set();
-function Paper({ children, ...props }) {
-  const parts = Array.isArray(children) ? children : [children],
-    label = parts[0]?.props?.children;
-  const keys = {
-      Clientes: 'clients',
-      Terminais: 'terminals',
-      'Versões ativas': 'releases',
-      'Erros de produção em 7 dias': 'errors'
-    },
-    statKey = keys[label];
-  const [selection, setSelection] = useState({ channels: allowedChannels(), stats: null });
-  useEffect(() => {
-    const listener = value => setSelection(value);
-    statsListeners.add(listener);
-    return () => statsListeners.delete(listener);
-  }, []);
-  if (!statKey) return <MuiPaper {...props}>{children}</MuiPaper>;
-  const colors = { production: '#2e7d32', beta: '#1976d2', test: '#7b1fa2' },
-    value = selection.stats?.[statKey] ?? parts[1]?.props?.children;
-  async function toggle(channel) {
-    try {
-      const channels = selection.channels.includes(channel)
-          ? selection.channels.filter(item => item !== channel)
-          : [...selection.channels, channel],
-        stats = channels.length
-          ? await api(`/admin/dashboard?channel=${channels.join(',')}`)
-          : { clients: 0, terminals: 0, releases: 0, errors: 0 },
-        next = { channels, stats };
-      for (const listener of statsListeners) listener(next);
-    } catch {}
-  }
-  const card = (
-    <MuiPaper {...props} sx={{ ...props.sx, height: '100%', boxSizing: 'border-box' }}>
-      <Typography color="text.secondary">{statKey === 'errors' ? 'Erros em 7 dias' : label}</Typography>
-      <Typography variant="h4">{value || 0}</Typography>
-    </MuiPaper>
-  );
-  if (statKey !== 'errors') return card;
-  return (
-    <Box sx={{ position: 'relative' }}>
-      <Stack direction="row" spacing={0.35} sx={{ position: 'absolute', right: 0, top: -22 }}>
-        {allowedChannels()
-          .slice()
-          .reverse()
-          .map(channel => {
-            const selected = selection.channels.includes(channel);
-            return (
-              <MuiButton
-                key={channel}
-                size="small"
-                onClick={() => toggle(channel)}
-                aria-pressed={selected}
-                sx={{
-                  minWidth: 0,
-                  minHeight: 18,
-                  px: 0.8,
-                  py: 0,
-                  fontSize: 9,
-                  lineHeight: 1,
-                  textTransform: 'none',
-                  borderRadius: 1,
-                  color: selected ? '#fff' : colors[channel],
-                  bgcolor: selected ? colors[channel] : `${colors[channel]}22`,
-                  border: `1px solid ${colors[channel]}55`,
-                  '&:hover': { bgcolor: selected ? colors[channel] : `${colors[channel]}38` }
-                }}
-              >
-                {channel === 'production' ? 'Produção' : channel === 'beta' ? 'Beta' : 'Test'}
-              </MuiButton>
-            );
-          })}
-      </Stack>
-      {card}
-    </Box>
-  );
-}
-function BackHome() {
-  return (
-    <Tooltip title="Voltar à página inicial">
-      <IconButton
-        color="primary"
-        onClick={() => {
-          location.href = '/dashboard';
-        }}
-      >
-        <HomeIcon />
-      </IconButton>
-    </Tooltip>
-  );
-}
+import LogDialog from './LogDialog';
+import Products from './Products';
+import Errors from './Errors';
+import ClientTerminalsDialog from './ClientTerminalsDialog';
+import NotificationsBell from './NotificationsBell';
+import ApiTokenDialog from './ProfileTokenDialog';
+import ReleaseDialog from './ReleaseDialog';
+import { StatsCards, Grid } from './components';
+import { allowedChannels, storeAllowedChannels, fmt } from './format';
+import { api } from '../../lib/api';
+import { Releases } from './Releases';
+import { Users, UserDialog } from './Users';
 
 export default function Dashboard() {
   const router = useRouter(),
@@ -212,22 +67,25 @@ export default function Dashboard() {
     [terminalLog, setTerminalLog] = useState(null),
     [terminalErrors, setTerminalErrors] = useState(null),
     [accountAnchor, setAccountAnchor] = useState(null),
+    [statsFilter, setStatsFilter] = useState({ channels: [], stats: null }),
     [message, setMessage] = useState('');
   async function load() {
     try {
-      const current = await api('/admin/me'),
-        requests = [
-          api('/admin/dashboard'),
-          api('/admin/clients'),
-          api('/admin/products'),
-          api('/admin/releases'),
-          api('/admin/logs?limit=500'),
-          api('/admin/errors/settings')
-        ];
+      const current = await api('/admin/me');
+      storeAllowedChannels(current);
+      const requests = [
+        api('/admin/dashboard'),
+        api('/admin/clients'),
+        api('/admin/products'),
+        api('/admin/releases'),
+        api('/admin/logs?limit=500'),
+        api('/admin/errors/settings')
+      ];
       if (current.role === 'admin') requests.push(api('/admin/users'));
       const [stats, clients, products, releases, logs, errorSettings, users = []] = await Promise.all(requests);
       setMe(current);
       setData({ stats, clients, products, releases, logs, errorSettings, users });
+      setStatsFilter({ channels: allowedChannels(), stats: null });
     } catch (e) {
       setMessage(e.message);
     }
@@ -251,6 +109,17 @@ export default function Dashboard() {
       setMessage(e.message);
     }
   }
+  async function toggleStatsChannel(channel) {
+    try {
+      const channels = statsFilter.channels.includes(channel)
+          ? statsFilter.channels.filter(item => item !== channel)
+          : [...statsFilter.channels, channel],
+        stats = channels.length
+          ? await api(`/admin/dashboard?channel=${channels.join(',')}`)
+          : { clients: 0, terminals: 0, releases: 0, errors: 0 };
+      setStatsFilter({ channels, stats });
+    } catch {}
+  }
   const done = text => {
       setMessage(text);
       setReleaseOpen(null);
@@ -267,6 +136,7 @@ export default function Dashboard() {
       <AppBar position="sticky" color="inherit" elevation={0}>
         <Toolbar>
           <Typography sx={{ flex: 1, fontWeight: 700 }}>Central de Atualização</Typography>
+          <NotificationsBell />
           <Button
             color="inherit"
             startIcon={<AccountCircleIcon />}
@@ -329,19 +199,11 @@ export default function Dashboard() {
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Stack spacing={3}>
           {message && <Alert onClose={() => setMessage('')}>{message}</Alert>}
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4,1fr)' }, gap: 2 }}>
-            {[
-              ['Clientes', data.stats.clients],
-              ['Terminais', data.stats.terminals],
-              ['Versões ativas', data.stats.releases],
-              ['Erros de produção em 7 dias', data.stats.errors]
-            ].map(x => (
-              <Paper key={x[0]} sx={{ p: 2.5 }}>
-                <Typography color="text.secondary">{x[0]}</Typography>
-                <Typography variant="h4">{x[1] || 0}</Typography>
-              </Paper>
-            ))}
-          </Box>
+          <StatsCards
+            stats={statsFilter.stats || data.stats}
+            selectedChannels={statsFilter.channels}
+            toggleChannel={toggleStatsChannel}
+          />
           <Paper>
             {primary && (
               <Tabs value={primary} onChange={(_, value) => setView(value)} variant="scrollable">
@@ -391,6 +253,7 @@ export default function Dashboard() {
                     Logs
                   </Typography>
                   <Grid
+                    showHome
                     heads={['Data', 'Status', 'Cliente', 'Terminal', 'Versão', 'Mensagem']}
                     rows={data.logs.map(l => [
                       fmt(l.created_at),
@@ -415,7 +278,7 @@ export default function Dashboard() {
           </Paper>
         </Stack>
       </Container>
-      <LegacyReleaseDialogImplementation
+      <ReleaseDialog
         open={!!releaseOpen}
         selectedArtifact={releaseOpen?.id ? releaseOpen : null}
         close={() => setReleaseOpen(null)}
@@ -456,1003 +319,5 @@ export default function Dashboard() {
         </DialogActions>
       </Dialog>
     </>
-  );
-}
-
-function Grid({ heads, rows }) {
-  const [page, setPage] = useState(0),
-    [size, setSize] = useState(10),
-    [order, setOrder] = useState({ index: 0, direction: 'asc' });
-  useEffect(() => setPage(0), [rows.length]);
-  const text = value => {
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'string' || typeof value === 'number') return String(value);
-      return String(value?.props?.children ?? value?.props?.label ?? '');
-    },
-    sorted = useMemo(
-      () =>
-        rows
-          .map((row, index) => ({ row, index }))
-          .sort((a, b) => {
-            const result = text(a.row[order.index]).localeCompare(text(b.row[order.index]), 'pt-BR', {
-              numeric: true,
-              sensitivity: 'base'
-            });
-            return (order.direction === 'asc' ? result : -result) || a.index - b.index;
-          })
-          .map(x => x.row),
-      [rows, order]
-    ),
-    showHome = heads.length === 6 && heads[0] === 'Data' && heads[2] === 'Cliente';
-  function sort(index) {
-    setOrder(current => ({
-      index,
-      direction: current.index === index && current.direction === 'asc' ? 'desc' : 'asc'
-    }));
-    setPage(0);
-  }
-  return (
-    <>
-      {showHome && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-          <BackHome />
-        </Box>
-      )}
-      <Box sx={{ overflowX: 'auto' }}>
-        <Box sx={{ minWidth: heads.length * 140 }}>
-          <Box
-            sx={{ display: 'grid', gridTemplateColumns: `repeat(${heads.length},1fr)`, gap: 2, p: 1, fontWeight: 700 }}
-          >
-            {heads.map((x, i) => (
-              <Button
-                key={x}
-                color="inherit"
-                onClick={() => sort(i)}
-                sx={{ justifyContent: 'flex-start', fontWeight: 700, textTransform: 'none', p: 0 }}
-              >
-                {x}
-                {order.index === i ? (order.direction === 'asc' ? ' ▲' : ' ▼') : ''}
-              </Button>
-            ))}
-          </Box>
-          {sorted.slice(page * size, page * size + size).map((row, i) => (
-            <Box
-              key={i}
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${heads.length},1fr)`,
-                gap: 2,
-                p: 1.5,
-                borderTop: '1px solid',
-                borderColor: 'divider',
-                alignItems: 'center'
-              }}
-            >
-              {row.map((x, j) => (
-                <Box key={j}>{x}</Box>
-              ))}
-            </Box>
-          ))}
-        </Box>
-      </Box>
-      <TablePagination
-        component="div"
-        count={rows.length}
-        page={Math.min(page, Math.max(Math.ceil(rows.length / size) - 1, 0))}
-        onPageChange={(_, p) => setPage(p)}
-        rowsPerPage={size}
-        onRowsPerPageChange={e => {
-          setSize(+e.target.value);
-          setPage(0);
-        }}
-        rowsPerPageOptions={[5, 10, 25, 50]}
-        labelRowsPerPage="Itens por página"
-        labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
-      />
-    </>
-  );
-}
-
-function Releases(props) {
-  const [tab, setTab] = useState('versions');
-  return (
-    <>
-      <Tabs
-        value={tab}
-        onChange={(_, value) => setTab(value)}
-        sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
-        <Tab value="versions" label="Versão" />
-        <Tab value="cicd" label="CI/CD" />
-      </Tabs>
-      {tab === 'versions' ? (
-        <ReleasedVersions {...props} create={() => props.create()} />
-      ) : (
-        <CiArtifacts release={props.create} notify={props.done} />
-      )}
-    </>
-  );
-}
-function ReleasedVersions({ items, products, clients = [], create, done }) {
-  const [product, setProduct] = useState(''),
-    [channel, setChannel] = useState(''),
-    [status, setStatus] = useState('active'),
-    [details, setDetails] = useState(null),
-    [copying, setCopying] = useState(null),
-    [confirm, setConfirm] = useState(null),
-    filtered = useMemo(
-      () =>
-        items.filter(
-          r =>
-            (!product || r.product_id === +product) &&
-            (!channel || r.channel === channel) &&
-            (status === 'deleted'
-              ? Boolean(r.deleted_at)
-              : status === 'blocked'
-                ? !r.deleted_at && Boolean(r.blocked)
-                : !r.deleted_at && !r.blocked)
-        ),
-      [items, product, channel, status]
-    );
-  async function change(r) {
-    try {
-      await api(`/admin/releases/${r.id}`, { method: 'PATCH', body: JSON.stringify({ blocked: !r.blocked }) });
-      done(r.blocked ? 'Atualização liberada' : 'Atualização bloqueada');
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  async function askRemove(r) {
-    try {
-      const impact = await api(`/admin/releases/${r.id}/delete-impact`);
-      setConfirm({
-        title: 'Excluir versão',
-        message: impact.canDelete
-          ? `Excluir a versão ${r.version}? Há ${impact.events} evento(s) histórico(s), que serão preservados sem vínculo com a versão.`
-          : `Não é possível excluir: ${impact.installations} terminal(is) utiliza(m) esta versão.`,
-        allowYes: impact.canDelete,
-        onYes: async () => {
-          await api(`/admin/releases/${r.id}`, { method: 'DELETE' });
-          done('Versão excluída');
-        }
-      });
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  async function view(r) {
-    try {
-      setDetails(await api(`/admin/releases/${r.id}/details`));
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  return (
-    <>
-      <Stack spacing={2}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-          <FormControl size="small" sx={{ minWidth: 180 }}>
-            <InputLabel>Produto</InputLabel>
-            <Select label="Produto" value={product} onChange={e => setProduct(e.target.value)}>
-              <MenuItem value="">Todos</MenuItem>
-              {products.map(p => (
-                <MenuItem key={p.id} value={p.id}>
-                  {p.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Canal</InputLabel>
-            <Select label="Canal" value={channel} onChange={e => setChannel(e.target.value)}>
-              <MenuItem value="">Todos</MenuItem>
-              {channels.map(c => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Status</InputLabel>
-            <Select label="Status" value={status} onChange={e => setStatus(e.target.value)}>
-              <MenuItem value="active">Ativas</MenuItem>
-              <MenuItem value="blocked">Bloqueadas</MenuItem>
-              <MenuItem value="deleted">Excluídas</MenuItem>
-            </Select>
-          </FormControl>
-          <Box flex={1} />
-          <Button variant="contained" onClick={create}>
-            Publicar versão
-          </Button>
-        </Stack>
-        <Grid
-          heads={['Produto', 'Versão', 'Canal', 'Destino', 'Terminais', 'Situação', 'Ações']}
-          rows={filtered.map(r => [
-            r.product_name,
-            r.version,
-            <Chip key="c" size="small" label={r.channel} />,
-            r.targets,
-            r.terminal_count || 0,
-            <Chip
-              key="s"
-              size="small"
-              color={r.deleted_at ? 'default' : r.blocked ? 'error' : r.active ? 'success' : 'default'}
-              label={r.deleted_at ? 'Excluída' : r.blocked ? 'Bloqueada' : r.active ? 'Ativa' : 'Inativa'}
-            />,
-            <Actions key={r.id} r={r} view={view} change={change} copy={setCopying} remove={askRemove} />
-          ])}
-        />
-      </Stack>
-      <Details value={details} close={() => setDetails(null)} />
-      <CopyDialog release={copying} clients={clients} close={() => setCopying(null)} done={done} />
-      <ConfirmDialog value={confirm} close={() => setConfirm(null)} />
-    </>
-  );
-}
-function Actions({ r, view, change, copy, remove }) {
-  const [a, setA] = useState(null),
-    run = fn => {
-      setA(null);
-      fn(r);
-    };
-  if (r.deleted_at)
-    return (
-      <Tooltip title="Visualizar histórico">
-        <IconButton size="small" onClick={() => view(r)}>
-          <VisibilityIcon />
-        </IconButton>
-      </Tooltip>
-    );
-  return (
-    <>
-      <Tooltip title="Ações">
-        <IconButton size="small" onClick={e => setA(e.currentTarget)}>
-          <MoreVertIcon />
-        </IconButton>
-      </Tooltip>
-      <Menu anchorEl={a} open={!!a} onClose={() => setA(null)}>
-        <Item icon={<VisibilityIcon />} text="Visualizar" click={() => run(view)} />
-        <MenuItem
-          component="a"
-          href={`/downloads/${r.file_path.split(/[/\\]/).map(encodeURIComponent).join('/')}`}
-          download={r.original_name || r.file_path.split(/[/\\]/).pop()}
-          onClick={() => setA(null)}
-        >
-          <ListItemIcon>
-            <DownloadIcon />
-          </ListItemIcon>
-          <ListItemText>Baixar arquivo</ListItemText>
-        </MenuItem>
-        <Item
-          icon={r.blocked ? <LockOpenIcon /> : <BlockIcon />}
-          text={r.blocked ? 'Liberar' : 'Bloquear'}
-          click={() => run(change)}
-        />
-        <Item icon={<ReplayIcon />} text="Recadastrar" click={() => run(copy)} />
-        <Divider />
-        <Item icon={<DeleteIcon color="error" />} text="Excluir" click={() => run(remove)} color="error.main" />
-      </Menu>
-    </>
-  );
-}
-const LegacyReleaseDialogImplementation = CiCdReleaseDialog;
-function Item({ icon, text, click, color }) {
-  return (
-    <MenuItem onClick={click} sx={{ color }}>
-      <ListItemIcon>{icon}</ListItemIcon>
-      <ListItemText>{text}</ListItemText>
-    </MenuItem>
-  );
-}
-function ConfirmDialog({ value, close }) {
-  async function yes() {
-    try {
-      await value.onYes?.();
-      close();
-    } catch (e) {
-      close();
-      alert(e.message);
-    }
-  }
-  return (
-    <Dialog open={!!value} onClose={close} fullWidth maxWidth="xs">
-      <DialogTitle>{value?.title || 'Confirmação'}</DialogTitle>
-      <DialogContent>
-        <Typography sx={{ whiteSpace: 'pre-wrap' }}>{value?.message}</Typography>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={close}>Cancelar</Button>
-        <Button onClick={close}>Não</Button>
-        <Button
-          variant="contained"
-          color={value?.danger ? 'error' : 'primary'}
-          disabled={value?.allowYes === false}
-          onClick={yes}
-        >
-          Sim
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-function CopyDialog({ release, clients, close, done }) {
-  const initial = r => ({
-      version: r?.version || '',
-      channel: r?.channel || 'production',
-      targetType: 'all',
-      targetClientIds: [],
-      mandatory: Boolean(r?.mandatory),
-      deadlineAt: '',
-      minimumVersion: r?.minimum_version || '',
-      notes: r?.notes || '',
-      technicalNotes: r?.technical_notes || '',
-      showNotesPdv: Boolean(r?.show_notes_pdv)
-    }),
-    [form, setForm] = useState(initial(null)),
-    [error, setError] = useState('');
-  useEffect(() => {
-    if (release) {
-      const tomorrow = new Date(Date.now() + 86400000);
-      setForm({
-        ...initial(release),
-        deadlineAt: new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-      });
-      setError('');
-    }
-  }, [release]);
-  const set = (k, v) => setForm(x => ({ ...x, [k]: v }));
-  async function send() {
-    try {
-      await api(`/admin/releases/${release.id}/copy`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          version: form.version.trim(),
-          deadlineAt: new Date(form.deadlineAt).toISOString()
-        })
-      });
-      close();
-      done('Versão recadastrada');
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-  return (
-    <Dialog open={!!release} onClose={close} fullWidth>
-      <DialogTitle>Recadastrar versão {release?.version}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} mt={1}>
-          {error && <Alert severity="error">{error}</Alert>}
-          <TextField label="Versão" value={form.version} onChange={e => set('version', e.target.value)} />
-          <FormControl>
-            <InputLabel>Canal</InputLabel>
-            <Select label="Canal" value={form.channel} onChange={e => set('channel', e.target.value)}>
-              {channels.map(c => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl>
-            <InputLabel>Liberação</InputLabel>
-            <Select label="Liberação" value={form.targetType} onChange={e => set('targetType', e.target.value)}>
-              <MenuItem value="all">Todos os clientes</MenuItem>
-              <MenuItem value="client">Clientes selecionados</MenuItem>
-            </Select>
-          </FormControl>
-          {form.targetType === 'client' && (
-            <FormControl>
-              <InputLabel>Clientes</InputLabel>
-              <Select
-                multiple
-                label="Clientes"
-                value={form.targetClientIds}
-                onChange={e => set('targetClientIds', e.target.value)}
-              >
-                {clients.map(c => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          <FormControlLabel
-            control={<Switch checked={form.mandatory} onChange={e => set('mandatory', e.target.checked)} />}
-            label="Obrigatória"
-          />
-          <TextField
-            type="datetime-local"
-            label="Prazo"
-            InputLabelProps={{ shrink: true }}
-            value={form.deadlineAt}
-            onChange={e => set('deadlineAt', e.target.value)}
-          />
-          <TextField
-            label="Versão mínima"
-            value={form.minimumVersion}
-            onChange={e => set('minimumVersion', e.target.value)}
-          />
-          <TextField
-            multiline
-            rows={3}
-            label="Nota do painel"
-            helperText="Uso interno; não é enviada ao PDV."
-            value={form.notes}
-            onChange={e => set('notes', e.target.value)}
-          />
-          <TextField
-            multiline
-            rows={4}
-            label="Nota técnica da atualização"
-            value={form.technicalNotes}
-            onChange={e => set('technicalNotes', e.target.value)}
-          />
-          <FormControlLabel
-            control={<Switch checked={form.showNotesPdv} onChange={e => set('showNotesPdv', e.target.checked)} />}
-            label="Exibir nota técnica no PDV"
-          />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={close}>Cancelar</Button>
-        <Button
-          variant="contained"
-          onClick={send}
-          disabled={
-            !form.version.trim() ||
-            !form.deadlineAt ||
-            (form.showNotesPdv && !form.technicalNotes.trim()) ||
-            (form.targetType === 'client' && !form.targetClientIds.length)
-          }
-        >
-          Recadastrar
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-function Details({ value, close }) {
-  const [day, setDay] = useState(null);
-  useEffect(() => setDay(null), [value]);
-  if (!value) return null;
-  const rows = value.installations
-    .filter(x => x.day === day)
-    .map(x => [x.client_name, x.terminal_name, x.computer_name || '-', fmt(x.created_at)]);
-  return (
-    <>
-      <Dialog open fullWidth maxWidth="md" onClose={close}>
-        <DialogTitle>Versão {value.version}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mt: 1 }}>
-            {[
-              ['Status', value.deleted_at ? 'Excluída' : value.blocked ? 'Bloqueada' : 'Ativa'],
-              ['Excluída em', fmt(value.deleted_at)],
-              ['Produto', `${value.product_name} (${value.product_code})`],
-              ['Tipo', value.artifact_type === 'sql' ? 'Script SQL' : 'Pacote ZIP'],
-              ['Canal', value.channel],
-              ['Destino', value.targets],
-              ['Arquivo para download', value.original_name || value.file_path],
-              ['Tamanho', `${(value.size_bytes / 1024 / 1024).toFixed(2)} MB`],
-              ['Versão mínima', value.minimum_version || '-'],
-              ['Prazo', fmt(value.deadline_at)],
-              ['Obrigatória', value.mandatory ? 'Sim' : 'Não'],
-              ['Exibir nota no PDV', value.show_notes_pdv ? 'Sim' : 'Não'],
-              ['SHA-256 do pacote', value.sha256],
-              ['SHA-256 do PDV.exe', value.executable_sha256 || 'Não disponível — versão antiga ou pacote sem PDV.exe']
-            ].map(x => (
-              <Box key={x[0]}>
-                <Typography variant="caption" color="text.secondary">
-                  {x[0]}
-                </Typography>
-                <Typography sx={{ wordBreak: 'break-word' }}>{x[1]}</Typography>
-              </Box>
-            ))}
-          </Box>
-          <Typography variant="subtitle2" mt={3}>
-            Nota do painel
-          </Typography>
-          <Typography sx={{ whiteSpace: 'pre-wrap' }}>{value.notes || 'Sem nota do painel.'}</Typography>
-          <Typography variant="subtitle2" mt={3}>
-            Nota técnica da atualização
-          </Typography>
-          <Typography sx={{ whiteSpace: 'pre-wrap' }}>{value.technical_notes || 'Sem nota técnica.'}</Typography>
-          <ReleaseAnalytics value={value.analytics} />
-          <Typography variant="subtitle2" mt={3} mb={1}>
-            Clientes atualizados por dia
-          </Typography>
-          {value.days.length ? (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {value.days.map(d => (
-                <Button key={d.day} variant="outlined" onClick={() => setDay(d.day)}>
-                  {fmtDay(d.day)}: {d.client_count} cliente(s) / {d.terminal_count} terminal(is)
-                </Button>
-              ))}
-            </Stack>
-          ) : (
-            <Typography color="text.secondary">Nenhuma instalação concluída registrada.</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={close}>Fechar</Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={!!day} fullWidth maxWidth="md" onClose={() => setDay(null)}>
-        <DialogTitle>Atualizados em {fmtDay(day)}</DialogTitle>
-        <DialogContent>
-          <Grid heads={['Cliente', 'Terminal', 'Computador', 'Atualizado em']} rows={rows} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDay(null)}>Fechar</Button>
-        </DialogActions>
-      </Dialog>
-    </>
-  );
-}
-function ReleaseAnalytics({ value }) {
-  if (!value) return null;
-  return (
-    <Stack spacing={2} mt={3}>
-      <Typography variant="h6">Timeline e saúde da versão</Typography>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4,1fr)' }, gap: 1 }}>
-        {[
-          ['Dias em atividade', value.activeDays],
-          ['Terminais que utilizaram', value.terminals],
-          ['Terminais com erro', value.terminalsWithErrors],
-          ['Percentual com erro', `${value.errorTerminalPercent}%`]
-        ].map(([label, text]) => (
-          <Paper key={label} sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              {label}
-            </Typography>
-            <Typography variant="h6">{text}</Typography>
-          </Paper>
-        ))}
-      </Box>
-      <Typography variant="subtitle2">Linha do tempo diária</Typography>
-      {value.timeline.length ? (
-        <Grid
-          heads={['Data', 'Novos terminais', 'Erros registrados']}
-          rows={value.timeline.map(x => [fmtDay(x.date), x.terminals, x.errors])}
-        />
-      ) : (
-        <Typography color="text.secondary">Nenhuma atividade registrada.</Typography>
-      )}
-      <Typography variant="subtitle2">Top 5 erros registrados</Typography>
-      {value.topErrors.length ? (
-        <Grid
-          heads={['Exceção', 'Mensagem', 'Ocorrências', 'Última ocorrência']}
-          rows={value.topErrors.map(x => [x.exception, x.message, x.count, fmt(x.lastAt)])}
-        />
-      ) : (
-        <Typography color="text.secondary">Nenhum erro vinculado a esta versão.</Typography>
-      )}
-    </Stack>
-  );
-}
-function LogDialog({ value, close }) {
-  const [status, setStatus] = useState(''),
-    [startDate, setStartDate] = useState(''),
-    [endDate, setEndDate] = useState('');
-  useEffect(() => {
-    setStatus('');
-    setStartDate('');
-    setEndDate('');
-  }, [value?.terminal.id]);
-  const statuses = useMemo(
-      () => [...new Set((value?.items || []).map(x => x.status))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      [value?.items]
-    ),
-    filtered = useMemo(() => {
-      const start = startDate ? new Date(`${startDate}T00:00:00`) : null,
-        end = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
-      return (value?.items || []).filter(x => {
-        const created = new Date(x.created_at.includes('T') ? x.created_at : x.created_at.replace(' ', 'T') + 'Z');
-        return (!status || x.status === status) && (!start || created >= start) && (!end || created <= end);
-      });
-    }, [value?.items, status, startDate, endDate]),
-    clear = () => {
-      setStatus('');
-      setStartDate('');
-      setEndDate('');
-    };
-  return (
-    <Dialog open={!!value} fullWidth maxWidth="lg" onClose={close}>
-      <DialogTitle>Log do terminal {value?.terminal.name}</DialogTitle>
-      <DialogContent>
-        {value && (
-          <Stack spacing={2} mt={1}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Status</InputLabel>
-                <Select label="Status" value={status} onChange={e => setStatus(e.target.value)}>
-                  <MenuItem value="">Todos</MenuItem>
-                  {statuses.map(item => (
-                    <MenuItem key={item} value={item}>
-                      {item}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                type="date"
-                label="Data inicial"
-                InputLabelProps={{ shrink: true }}
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                inputProps={{ max: endDate || undefined }}
-              />
-              <TextField
-                type="date"
-                label="Data final"
-                InputLabelProps={{ shrink: true }}
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                inputProps={{ min: startDate || undefined }}
-              />
-              <Button onClick={clear} disabled={!status && !startDate && !endDate}>
-                Limpar filtros
-              </Button>
-              <Box flex={1} />
-              <Typography variant="body2" color="text.secondary">
-                {filtered.length} de {value.items.length} evento(s)
-              </Typography>
-            </Stack>
-            <Grid
-              heads={['Data', 'Status', 'Versão anterior', 'Versão destino', 'IP', 'Mensagem']}
-              rows={filtered.map(x => [
-                fmt(x.created_at),
-                x.status,
-                x.previous_version || '-',
-                x.target_version || '-',
-                x.ip || '-',
-                x.message || '-'
-              ])}
-            />
-          </Stack>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={close}>Fechar</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-function Products({ items, admin, done }) {
-  const [code, setCode] = useState(''),
-    [name, setName] = useState(''),
-    [confirm, setConfirm] = useState(null),
-    [customizing, setCustomizing] = useState(null);
-  async function add() {
-    try {
-      await api('/admin/products', { method: 'POST', body: JSON.stringify({ code, name }) });
-      setCode('');
-      setName('');
-      done('Produto cadastrado');
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  async function remove(p) {
-    try {
-      const impact = await api(`/admin/products/${p.id}/delete-impact`);
-      setConfirm({
-        title: 'Excluir produto',
-        danger: true,
-        allowYes: impact.canDelete,
-        message: impact.canDelete
-          ? `Excluir o produto ${p.name}?`
-          : `Não é possível excluir. Existem ${impact.releases} versão(ões) e ${impact.terminals} terminal(is) vinculados.`,
-        onYes: async () => {
-          await api(`/admin/products/${p.id}`, { method: 'DELETE' });
-          done('Produto excluído');
-        }
-      });
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  return (
-    <>
-      <Stack spacing={2}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <BackHome />
-        </Box>
-        {admin && (
-          <Stack direction="row" spacing={1}>
-            <TextField size="small" label="Código" value={code} onChange={e => setCode(e.target.value)} />
-            <TextField size="small" label="Nome" value={name} onChange={e => setName(e.target.value)} />
-            <Button variant="contained" disabled={!code || !name} onClick={add}>
-              Cadastrar
-            </Button>
-          </Stack>
-        )}
-        <Grid
-          heads={['Produto', 'Código', 'Ações']}
-          rows={items.map(p => [
-            p.name,
-            p.code,
-            admin ? (
-              <Stack key={p.id} direction="row">
-                <Button onClick={() => setCustomizing(p)}>Personalizar</Button>
-                <Button color="error" onClick={() => remove(p)}>
-                  Excluir
-                </Button>
-              </Stack>
-            ) : (
-              '-'
-            )
-          ])}
-        />
-      </Stack>
-      <ConfirmDialog value={confirm} close={() => setConfirm(null)} />
-      <ProductThemeDialog product={customizing} close={() => setCustomizing(null)} done={done} />
-    </>
-  );
-}
-function Users({ items, create, done }) {
-  async function toggle(u) {
-    try {
-      await api(`/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ active: !u.active }) });
-      done('Usuário atualizado');
-    } catch (e) {
-      done(e.message);
-    }
-  }
-  return (
-    <Stack spacing={2}>
-      <Stack direction="row" justifyContent="space-between">
-        <Button variant="contained" onClick={create}>
-          Novo usuário
-        </Button>
-        <BackHome />
-      </Stack>
-      <Grid
-        heads={['Nome', 'Login', 'Perfil', 'Produtos', 'Canais', 'Situação']}
-        rows={items.map(u => [
-          u.name,
-          u.username,
-          u.role,
-          u.products || 'Todos',
-          u.channels || 'Todos',
-          <Button key={u.id} onClick={() => toggle(u)}>
-            {u.active ? 'Desativar' : 'Ativar'}
-          </Button>
-        ])}
-      />
-    </Stack>
-  );
-}
-function UserDialog({ open, close, products, done }) {
-  const [form, setForm] = useState({
-      name: '',
-      username: '',
-      password: '',
-      role: 'operator',
-      productIds: [],
-      channels: []
-    }),
-    set = (k, v) => setForm({ ...form, [k]: v });
-  async function send() {
-    await api('/admin/users', { method: 'POST', body: JSON.stringify(form) });
-    done();
-  }
-  return (
-    <Dialog open={open} onClose={close} fullWidth>
-      <DialogTitle>Novo usuário</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} mt={1}>
-          <TextField label="Nome" value={form.name} onChange={e => set('name', e.target.value)} />
-          <TextField label="Login" value={form.username} onChange={e => set('username', e.target.value)} />
-          <TextField
-            label="Senha (mínimo 8 caracteres)"
-            type="password"
-            value={form.password}
-            onChange={e => set('password', e.target.value)}
-          />
-          <FormControl>
-            <InputLabel>Perfil</InputLabel>
-            <Select label="Perfil" value={form.role} onChange={e => set('role', e.target.value)}>
-              <MenuItem value="operator">Usuário limitado</MenuItem>
-              <MenuItem value="admin">Administrador</MenuItem>
-            </Select>
-          </FormControl>
-          {form.role === 'operator' && (
-            <>
-              <FormControl>
-                <InputLabel>Produtos</InputLabel>
-                <Select
-                  multiple
-                  label="Produtos"
-                  value={form.productIds}
-                  onChange={e => set('productIds', e.target.value)}
-                >
-                  {products.map(p => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl>
-                <InputLabel>Canais</InputLabel>
-                <Select multiple label="Canais" value={form.channels} onChange={e => set('channels', e.target.value)}>
-                  {channels.map(c => (
-                    <MenuItem key={c} value={c}>
-                      {c}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </>
-          )}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={close}>Cancelar</Button>
-        <Button variant="contained" disabled={!form.name || !form.username || form.password.length < 8} onClick={send}>
-          Cadastrar
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-function LegacyReleaseDialogOld({ open, close, clients, products, done }) {
-  const [form, setForm] = useState({
-      productId: '',
-      version: '',
-      artifactType: 'package',
-      sqlContent: '',
-      channel: 'test',
-      targetType: 'all',
-      targetClientIds: [],
-      mandatory: false,
-      deadlineAt: '',
-      minimumVersion: '',
-      notes: '',
-      technicalNotes: '',
-      showNotesPdv: false
-    }),
-    [file, setFile] = useState(null),
-    [error, setError] = useState(''),
-    set = (k, v) => setForm({ ...form, [k]: v });
-  async function send() {
-    try {
-      const body = new FormData();
-      Object.entries(form).forEach(([k, v]) => body.append(k, Array.isArray(v) ? JSON.stringify(v) : String(v)));
-      if (file) body.append('artifact', file);
-      await api('/admin/releases', { method: 'POST', body });
-      done();
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-  return (
-    <Dialog open={open} onClose={close} fullWidth>
-      <DialogTitle>Publicar versão</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} mt={1}>
-          {error && <Alert severity="error">{error}</Alert>}
-          <FormControl>
-            <InputLabel>Produto</InputLabel>
-            <Select label="Produto" value={form.productId} onChange={e => set('productId', e.target.value)}>
-              {products.map(p => (
-                <MenuItem key={p.id} value={p.id}>
-                  {p.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField label="Versão" value={form.version} onChange={e => set('version', e.target.value)} />
-          <FormControl>
-            <InputLabel>Tipo</InputLabel>
-            <Select label="Tipo" value={form.artifactType} onChange={e => set('artifactType', e.target.value)}>
-              <MenuItem value="package">Pacote ZIP</MenuItem>
-              <MenuItem value="sql">Script SQL</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl>
-            <InputLabel>Canal</InputLabel>
-            <Select label="Canal" value={form.channel} onChange={e => set('channel', e.target.value)}>
-              {channels.map(c => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl>
-            <InputLabel>Liberação</InputLabel>
-            <Select label="Liberação" value={form.targetType} onChange={e => set('targetType', e.target.value)}>
-              <MenuItem value="all">Todos os clientes</MenuItem>
-              <MenuItem value="client">Clientes selecionados</MenuItem>
-            </Select>
-          </FormControl>
-          {form.targetType === 'client' && (
-            <FormControl>
-              <InputLabel>Clientes</InputLabel>
-              <Select
-                multiple
-                label="Clientes"
-                value={form.targetClientIds}
-                onChange={e => set('targetClientIds', e.target.value)}
-              >
-                {clients.map(c => (
-                  <MenuItem key={c.id} value={c.id}>
-                    {c.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-          <FormControlLabel
-            control={<Switch checked={form.mandatory} onChange={e => set('mandatory', e.target.checked)} />}
-            label="Obrigatória"
-          />
-          <TextField
-            type="datetime-local"
-            label="Prazo"
-            InputLabelProps={{ shrink: true }}
-            value={form.deadlineAt}
-            onChange={e => set('deadlineAt', e.target.value)}
-          />
-          <TextField
-            label="Versão mínima"
-            value={form.minimumVersion}
-            onChange={e => set('minimumVersion', e.target.value)}
-          />
-          <TextField
-            multiline
-            rows={3}
-            label="Nota do painel"
-            helperText="Uso interno; não é enviada ao PDV."
-            value={form.notes}
-            onChange={e => set('notes', e.target.value)}
-          />
-          <TextField
-            multiline
-            rows={4}
-            label="Nota técnica da atualização"
-            value={form.technicalNotes}
-            onChange={e => set('technicalNotes', e.target.value)}
-          />
-          <FormControlLabel
-            control={<Switch checked={form.showNotesPdv} onChange={e => set('showNotesPdv', e.target.checked)} />}
-            label="Exibir nota técnica no PDV"
-          />
-          {form.artifactType === 'sql' ? (
-            <TextField
-              multiline
-              rows={7}
-              label="Comandos SQL"
-              value={form.sqlContent}
-              onChange={e => set('sqlContent', e.target.value)}
-            />
-          ) : (
-            <input type="file" accept=".zip" onChange={e => setFile(e.target.files[0])} />
-          )}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={close}>Cancelar</Button>
-        <Button
-          variant="contained"
-          onClick={send}
-          disabled={
-            !form.productId ||
-            !form.version ||
-            !form.deadlineAt ||
-            (form.showNotesPdv && !form.technicalNotes.trim()) ||
-            (form.artifactType === 'package' ? !file : !form.sqlContent.trim())
-          }
-        >
-          Publicar
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }

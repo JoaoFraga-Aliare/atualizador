@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openDatabase } from '../src/db.js';
+import Database from 'better-sqlite3';
+import { SCHEMA_VERSION, openDatabase } from '../src/db.js';
 
 test('creates release artifact and event log columns', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'central-atualizacao-'));
@@ -75,4 +76,41 @@ test('creates release artifact and event log columns', t => {
       .get(inserted.lastInsertRowid),
     { reported_executable_sha256: hash, executable_hash_status: 'unauthorized' }
   );
+});
+
+test('applies versioned migrations once and upgrades legacy databases', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'central-migrations-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'legacy.db');
+  const legacy = new Database(file);
+  legacy.exec(
+    'CREATE TABLE terminal_event(id INTEGER PRIMARY KEY AUTOINCREMENT,terminal_id INTEGER,previous_version TEXT,target_version TEXT,status TEXT NOT NULL,message TEXT,ip TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+  );
+  legacy
+    .prepare('INSERT INTO terminal_event(status,message) VALUES(?,?)')
+    .run('published', 'VersÃ£o 1.0 publicada atÃ© amanhÃ£');
+  legacy.prepare('INSERT INTO terminal_event(status,message) VALUES(?,?)').run('success', 'Atualização aplicada');
+  legacy.close();
+
+  let db = openDatabase(file);
+  assert.equal(db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  assert.deepEqual(
+    db
+      .prepare('SELECT message FROM terminal_event ORDER BY id')
+      .all()
+      .map(row => row.message),
+    ['Versão 1.0 publicada até amanhã', 'Atualização aplicada']
+  );
+  assert.ok(
+    db
+      .prepare('PRAGMA table_info(terminal_event)')
+      .all()
+      .some(item => item.name === 'release_id')
+  );
+  db.prepare('INSERT INTO terminal_event(status,message) VALUES(?,?)').run('published', 'VersÃ£o depois da migracao');
+  db.close();
+
+  db = openDatabase(file);
+  assert.equal(db.prepare('SELECT message FROM terminal_event WHERE id=3').get().message, 'VersÃ£o depois da migracao');
+  db.close();
 });

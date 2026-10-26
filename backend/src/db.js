@@ -1,12 +1,38 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+// Cada passo roda uma unica vez, em ordem e numa transacao; PRAGMA user_version guarda o ultimo aplicado.
+// Para mudar o esquema, acrescente um passo no fim da lista; nunca altere um passo ja publicado.
+const MIGRATIONS = [
+  { version: 1, name: 'esquema base', up: baseSchema },
+  { version: 2, name: 'corrige acentuacao das mensagens de eventos', up: fixEventMessageEncoding }
+];
+export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;
+
 export function openDatabase(databasePath) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   const db = new Database(databasePath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
+  migrate(db);
+  db.pragma('optimize');
+  return db;
+}
+
+function migrate(db) {
+  const current = db.pragma('user_version', { simple: true });
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= current) continue;
+    db.transaction(() => {
+      migration.up(db);
+      db.pragma(`user_version = ${migration.version}`);
+    })();
+  }
+}
+
+// Bancos anteriores ao controle de versao ja podem ter parte destas tabelas e colunas, por isso o passo e idempotente.
+function baseSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS product(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL UNIQUE,name TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS client(id INTEGER PRIMARY KEY AUTOINCREMENT,external_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,document TEXT,first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -86,8 +112,16 @@ export function openDatabase(databasePath) {
     END;
   `);
   migrateLegacyApiTokens(db);
-  db.pragma('optimize');
-  return db;
+}
+
+// Mensagens gravadas quando o codigo tinha UTF-8 lido como Latin-1 (ex.: "VersÃ£o").
+function fixEventMessageEncoding(db) {
+  const update = db.prepare('UPDATE terminal_event SET message=? WHERE id=?');
+  for (const row of db.prepare("SELECT id,message FROM terminal_event WHERE message LIKE '%Ã%'").all()) {
+    if ([...row.message].some(char => char.charCodeAt(0) > 0xff)) continue;
+    const fixed = Buffer.from(row.message, 'latin1').toString('utf8');
+    if (!fixed.includes('�') && !fixed.includes('Ã')) update.run(fixed, row.id);
+  }
 }
 
 function migrateLegacyApiTokens(db) {

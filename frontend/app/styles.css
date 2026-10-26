@@ -1,3 +1,31 @@
-*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{background:#f5f6f8}.muted{color:#68717d}
-input[type='file']{width:100%;padding:10px;color:#475569;border:1px dashed #cbd1d8;border-radius:6px;background:#fafbfc}
-input[type='file']::file-selector-button{margin-right:12px;padding:7px 11px;color:#334155;border:1px solid #cbd1d8;border-radius:5px;background:#fff;cursor:pointer}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  background: #f5f6f8;
+}
+.muted {
+  color: #68717d;
+}
+input[type='file'] {
+  width: 100%;
+  padding: 10px;
+  color: #475569;
+  border: 1px dashed #cbd1d8;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+input[type='file']::file-selector-button {
+  margin-right: 12px;
+  padding: 7px 11px;
+  color: #334155;
+  border: 1px solid #cbd1d8;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+}

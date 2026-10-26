@@ -1,0 +1,7 @@
+node_modules/
+**/node_modules/
+frontend/.next/
+frontend/out/
+packages/
+**/package-lock.json
+*.md

@@ -4,7 +4,9 @@ import path from 'node:path';
 export function openDatabase(databasePath) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   const db = new Database(databasePath);
-  db.pragma('journal_mode = WAL'); db.pragma('busy_timeout = 5000'); db.pragma('foreign_keys = ON');
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+  db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS product(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL UNIQUE,name TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS client(id INTEGER PRIMARY KEY AUTOINCREMENT,external_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,document TEXT,first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -89,18 +91,28 @@ export function openDatabase(databasePath) {
 }
 
 function migrateLegacyApiTokens(db) {
-  const users=db.prepare('SELECT id,api_token_hash,api_token_created_at FROM app_user WHERE api_token_hash IS NOT NULL').all();
-  for(const user of users){
-    db.prepare("INSERT OR IGNORE INTO api_token(user_id,name,token_hash,created_at) VALUES(?,?,?,COALESCE(?,CURRENT_TIMESTAMP))").run(user.id,'Token migrado',user.api_token_hash,user.api_token_created_at);
-    const token=db.prepare('SELECT id FROM api_token WHERE token_hash=?').get(user.api_token_hash);
-    if(!token)continue;
-    db.prepare('INSERT OR IGNORE INTO api_token_item_product(token_id,product_id) SELECT ?,product_id FROM api_token_product WHERE user_id=?').run(token.id,user.id);
-    db.prepare('INSERT OR IGNORE INTO api_token_item_channel(token_id,channel) SELECT ?,channel FROM api_token_channel WHERE user_id=?').run(token.id,user.id);
+  const users = db
+    .prepare('SELECT id,api_token_hash,api_token_created_at FROM app_user WHERE api_token_hash IS NOT NULL')
+    .all();
+  for (const user of users) {
+    db.prepare(
+      'INSERT OR IGNORE INTO api_token(user_id,name,token_hash,created_at) VALUES(?,?,?,COALESCE(?,CURRENT_TIMESTAMP))'
+    ).run(user.id, 'Token migrado', user.api_token_hash, user.api_token_created_at);
+    const token = db.prepare('SELECT id FROM api_token WHERE token_hash=?').get(user.api_token_hash);
+    if (!token) continue;
+    db.prepare(
+      'INSERT OR IGNORE INTO api_token_item_product(token_id,product_id) SELECT ?,product_id FROM api_token_product WHERE user_id=?'
+    ).run(token.id, user.id);
+    db.prepare(
+      'INSERT OR IGNORE INTO api_token_item_channel(token_id,channel) SELECT ?,channel FROM api_token_channel WHERE user_id=?'
+    ).run(token.id, user.id);
   }
 }
 
 function ensureColumn(db, table, column, definition) {
-  const exists = db.prepare(`PRAGMA table_info(${table})`).all()
+  const exists = db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
     .some(item => item.name === column);
   if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

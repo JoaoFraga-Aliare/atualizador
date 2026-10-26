@@ -17,12 +17,17 @@ test('hashes and verifies passwords with a random salt', () => {
 test('creates one initial admin and enforces operator scopes', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'central-auth-'));
   const db = openDatabase(path.join(directory, 'test.db'));
-  t.after(() => { db.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  t.after(() => {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
   ensureInitialAdmin(db, 'admin', 'senha-admin');
   ensureInitialAdmin(db, 'outro', 'outra-senha');
   assert.equal(db.prepare("SELECT count(*) value FROM app_user WHERE role='admin'").get().value, 1);
   const productId = db.prepare("INSERT INTO product(code,name) VALUES('pdv','PDV')").run().lastInsertRowid;
-  const userId = db.prepare("INSERT INTO app_user(username,name,password_hash,role) VALUES('operador','Operador',?,'operator')").run(hashPassword('senha-operador')).lastInsertRowid;
+  const userId = db
+    .prepare("INSERT INTO app_user(username,name,password_hash,role) VALUES('operador','Operador',?,'operator')")
+    .run(hashPassword('senha-operador')).lastInsertRowid;
   db.prepare('INSERT INTO user_product(user_id,product_id) VALUES(?,?)').run(userId, productId);
   db.prepare("INSERT INTO user_channel(user_id,channel) VALUES(?,'beta')").run(userId);
   const scopes = userScopes(db, { id: Number(userId), role: 'operator' });

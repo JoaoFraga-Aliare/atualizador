@@ -1,9 +1,10 @@
 export function compareVersions(a, b) {
-  const normalize = (value) => String(value || '')
-    .trim()
-    .replace(/^v/i, '')
-    .split(/[.+-]/)
-    .map((part) => /^\d+$/.test(part) ? Number(part) : part.toLowerCase());
+  const normalize = value =>
+    String(value || '')
+      .trim()
+      .replace(/^v/i, '')
+      .split(/[.+-]/)
+      .map(part => (/^\d+$/.test(part) ? Number(part) : part.toLowerCase()));
   const left = normalize(a);
   const right = normalize(b);
   const length = Math.max(left.length, right.length);

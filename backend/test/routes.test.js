@@ -402,3 +402,115 @@ test('authentication failures are rate limited', async t => {
     assert.equal((await api.post('/api/v1/updates/check', {}, { Authorization: 'Bearer errada' })).status, 401);
   assert.equal((await api.check()).status, 429);
 });
+
+test('terminals receive their own key and the global key stops working once it is confirmed', async t => {
+  const api = await startServer(t);
+  const admin = await api.login();
+  const first = await api.check();
+  assert.match(first.body.terminalKey, /^tk_/);
+  const second = await api.check();
+  assert.match(second.body.terminalKey, /^tk_/);
+  assert.notEqual(second.body.terminalKey, first.body.terminalKey);
+  const keyHeaders = { Authorization: `Bearer ${second.body.terminalKey}`, 'Content-Type': 'application/json' };
+  assert.equal(
+    (
+      await api.post(
+        '/api/v1/updates/events',
+        { terminalId: 'terminal-1', status: 'success' },
+        { Authorization: `Bearer ${first.body.terminalKey}` }
+      )
+    ).status,
+    401
+  );
+
+  assert.equal(
+    (await api.post('/api/v1/updates/events', { terminalId: 'terminal-1', status: 'success' }, keyHeaders)).status,
+    202
+  );
+  const blocked = await api.check();
+  assert.equal(blocked.status, 401);
+  assert.equal(blocked.body.error, 'terminal_key_required');
+  const withKey = await api.post(
+    '/api/v1/updates/check',
+    {
+      client: { id: 'cliente-1', name: 'Cliente 1' },
+      terminal: { id: 'terminal-1', name: 'CAIXA 01' },
+      currentVersion: '1.0.0'
+    },
+    keyHeaders
+  );
+  assert.equal(withKey.status, 200);
+  assert.equal(withKey.body.terminalKey, undefined);
+  assert.equal(
+    (await api.post('/api/v1/updates/events', { terminalId: 'outro', status: 'success' }, keyHeaders)).body.error,
+    'terminal_mismatch'
+  );
+  assert.equal((await api.check({ terminal: { id: 'terminal-2', name: 'CAIXA 02' } })).status, 200);
+
+  const uploadWith = authorization => {
+    const form = new FormData();
+    form.append('terminalId', 'terminal-1');
+    form.append('database', new Blob(['BANCO']), 'banco.zip');
+    return api.json('/api/v1/database/upload', {
+      method: 'POST',
+      headers: { Authorization: authorization },
+      body: form
+    });
+  };
+  assert.equal((await uploadWith(api.installationHeaders.Authorization)).body.error, 'terminal_key_required');
+  assert.equal((await uploadWith(keyHeaders.Authorization)).status, 201);
+
+  const close = url =>
+    new Promise(resolve => {
+      const ws = new WebSocket(url);
+      ws.on('message', data => {
+        resolve(JSON.parse(String(data)).kind);
+        ws.close();
+      });
+      ws.on('close', (_code, reason) => resolve(String(reason)));
+      ws.on('error', () => {});
+    });
+  const live = `ws://127.0.0.1:${api.port}/api/v1/live?terminalId=terminal-1&token=`;
+  assert.equal(await close(live + api.env.INSTALLATION_KEY), 'terminal_key_required');
+  assert.equal(await close(live + second.body.terminalKey), 'hello');
+
+  const clients = (await api.json('/api/v1/admin/clients', { headers: admin })).body;
+  const client = clients.find(item => item.external_id === 'cliente-1');
+  const terminals = (await api.json(`/api/v1/admin/clients/${client.id}/terminals`, { headers: admin })).body;
+  const terminal = terminals.find(item => item.external_id === 'terminal-1');
+  assert.equal(terminal.terminal_key_status, 'confirmed');
+  assert.equal('api_key_hash' in terminal, false);
+  assert.equal(
+    (await api.json(`/api/v1/admin/terminals/${terminal.id}/reset-key`, { method: 'POST', headers: admin })).status,
+    200
+  );
+  assert.equal(
+    (await api.json(`/api/v1/admin/terminals/${terminal.id}`, { headers: admin })).body.terminal_key_status,
+    'none'
+  );
+  assert.equal(
+    (await api.post('/api/v1/updates/events', { terminalId: 'terminal-1', status: 'success' }, keyHeaders)).status,
+    401
+  );
+  const again = await api.check();
+  assert.equal(again.status, 200);
+  assert.match(again.body.terminalKey, /^tk_/);
+});
+
+test('TERMINAL_KEY_ENFORCEMENT=off keeps the global key valid during the transition', async t => {
+  const api = await startServer(t, { env: { TERMINAL_KEY_ENFORCEMENT: 'off' } });
+  const { body } = await api.check();
+  assert.equal(
+    (
+      await api.post(
+        '/api/v1/updates/events',
+        { terminalId: 'terminal-1', status: 'success' },
+        { Authorization: `Bearer ${body.terminalKey}` }
+      )
+    ).status,
+    202
+  );
+  const check = await api.check();
+  assert.equal(check.status, 200);
+  assert.equal(check.body.terminalKey, undefined);
+});

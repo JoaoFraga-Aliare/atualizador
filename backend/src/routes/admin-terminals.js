@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import { CHANNELS } from '../auth.js';
+import { publicTerminal } from '../terminal-keys.js';
 
 // Painel: dashboard, clientes, terminais e backups de banco.
 export function registerAdminTerminalRoutes(app, ctx) {
   const {
+    terminalKeys,
     db,
     adminAuth,
     sendLiveCommand,
@@ -77,13 +79,17 @@ export function registerAdminTerminalRoutes(app, ctx) {
     const codes = allowedProductCodes(req);
     res.json(
       req.scopes.all
-        ? db.prepare('SELECT * FROM terminal WHERE client_id=? ORDER BY last_seen_at DESC').all(req.params.id)
+        ? db
+            .prepare('SELECT * FROM terminal WHERE client_id=? ORDER BY last_seen_at DESC')
+            .all(req.params.id)
+            .map(publicTerminal)
         : codes.length && req.scopes.channels.length
           ? db
               .prepare(
                 `SELECT * FROM terminal WHERE client_id=? AND product_code IN (${codes.map(() => '?').join(',')}) AND channel IN (${req.scopes.channels.map(() => '?').join(',')}) ORDER BY last_seen_at DESC`
               )
               .all(req.params.id, ...codes, ...req.scopes.channels)
+              .map(publicTerminal)
           : []
     );
   });
@@ -100,7 +106,15 @@ export function registerAdminTerminalRoutes(app, ctx) {
       (!product || !req.scopes.productIds.includes(product.id) || !req.scopes.channels.includes(terminal.channel))
     )
       return res.status(403).json({ error: 'scope_denied' });
-    res.json(terminal);
+    res.json(publicTerminal(terminal));
+  });
+  // Descarta a chave do terminal (reinstalacao, chave perdida); a proxima consulta emite outra.
+  app.post('/api/v1/admin/terminals/:id/reset-key', adminAuth, (req, res) => {
+    const terminal = db.prepare('SELECT * FROM terminal WHERE id=?').get(req.params.id);
+    if (!terminal) return res.status(404).json({ error: 'terminal_not_found' });
+    if (!canAccessTerminal(req, terminal)) return res.status(403).json({ error: 'scope_denied' });
+    terminalKeys.resetKey(terminal.id);
+    res.json({ reset: true });
   });
   app.get('/api/v1/admin/terminals/:id/logs', adminAuth, (req, res) => {
     const terminal = db.prepare('SELECT * FROM terminal WHERE id=?').get(req.params.id);
@@ -198,7 +212,7 @@ export function registerAdminTerminalRoutes(app, ctx) {
           )
           .all(client.id, ...allowedProductCodes(req), ...req.scopes.channels);
     const items = terminals.map(terminal => ({
-      terminal,
+      terminal: publicTerminal(terminal),
       items: db
         .prepare(
           `SELECT du.*,t.name terminal_name,t.computer_name FROM terminal_database_upload du JOIN terminal t ON t.id=du.terminal_id WHERE du.terminal_id=? ORDER BY du.received_at DESC,du.id DESC`

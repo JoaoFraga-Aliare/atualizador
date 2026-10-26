@@ -1,6 +1,7 @@
 import { isRegressionAfterFix } from '../version.js';
 import { textValue } from '../lib/util.js';
 import { normalizeScreenshot, decryptStoredError, errorSignature } from '../lib/error-crypto.js';
+import { publicTerminal } from '../terminal-keys.js';
 
 // Painel: erros de producao e notificacoes.
 export function registerAdminErrorRoutes(app, ctx) {
@@ -545,7 +546,7 @@ export function registerAdminErrorRoutes(app, ctx) {
       )
       .get(req.params.id);
     if (!terminal) return res.status(404).json({ error: 'terminal_not_found' });
-    res.json(terminal);
+    res.json(publicTerminal(terminal));
   });
   app.get('/api/v1/admin/errors/:id/screenshot', adminAuth, (req, res) => {
     const error = db.prepare('SELECT * FROM application_error WHERE id=?').get(req.params.id);

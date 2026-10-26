@@ -21,6 +21,7 @@ import {
   Delete as DeleteIcon,
   Download as DownloadIcon,
   History as HistoryIcon,
+  KeyOff as KeyOffIcon,
   ReceiptLong as ReceiptLongIcon,
   Settings as SettingsIcon,
   Storage as StorageIcon
@@ -37,8 +38,35 @@ const channelStyle = channel =>
     production: { bgcolor: '#2e7d32', color: '#fff' }
   })[channel] || {};
 
+const keyLabels = {
+  confirmed: {
+    label: 'Própria',
+    color: 'success',
+    hint: 'O terminal usa a chave própria; a chave global não vale mais para ele.'
+  },
+  pending: { label: 'Emitida', color: 'warning', hint: 'Chave emitida, ainda não usada pelo terminal.' },
+  none: { label: 'Global', color: 'default', hint: 'O terminal ainda usa a chave global de instalação.' }
+};
+
 export default function ClientTerminalsDialog({ client, terminals, close, showLog, showErrors }) {
-  const [databaseTerminal, setDatabaseTerminal] = useState(null);
+  const [databaseTerminal, setDatabaseTerminal] = useState(null),
+    [keyStatus, setKeyStatus] = useState({}),
+    [keyMessage, setKeyMessage] = useState('');
+  async function resetKey(terminal) {
+    if (
+      !confirm(
+        `Descartar a chave do terminal ${terminal.name}? Ele volta a usar a chave global e recebe outra chave na próxima consulta.`
+      )
+    )
+      return;
+    try {
+      await api(`/admin/terminals/${terminal.id}/reset-key`, { method: 'POST', body: JSON.stringify({}) });
+      setKeyStatus(current => ({ ...current, [terminal.id]: 'none' }));
+      setKeyMessage(`Chave do terminal ${terminal.name} descartada.`);
+    } catch (e) {
+      setKeyMessage(e.message);
+    }
+  }
   const sorted = [...terminals].sort(
     (a, b) =>
       String(a.product_code || '').localeCompare(String(b.product_code || ''), 'pt-BR', { sensitivity: 'base' }) ||
@@ -53,10 +81,23 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
       <Dialog open={!!client} fullWidth maxWidth="lg" onClose={close}>
         <DialogTitle>Terminais de {client?.name}</DialogTitle>
         <DialogContent>
+          {keyMessage && (
+            <Alert sx={{ mb: 2 }} onClose={() => setKeyMessage('')}>
+              {keyMessage}
+            </Alert>
+          )}
           <Box sx={{ overflowX: 'auto' }}>
-            <Box sx={{ minWidth: 950 }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, p: 1, fontWeight: 700 }}>
-                {['Terminal', 'Computador', 'Produto', 'Canal', 'Versao', 'Ultimo contato', 'Acoes'].map(x => (
+            <Box sx={{ minWidth: 1050 }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7,minmax(0,1fr)) minmax(190px,1.4fr)',
+                  gap: 2,
+                  p: 1,
+                  fontWeight: 700
+                }}
+              >
+                {['Terminal', 'Computador', 'Produto', 'Canal', 'Versao', 'Chave', 'Ultimo contato', 'Acoes'].map(x => (
                   <Box key={x}>{x}</Box>
                 ))}
               </Box>
@@ -65,7 +106,7 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                   key={terminal.id}
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(7,1fr)',
+                    gridTemplateColumns: 'repeat(7,minmax(0,1fr)) minmax(190px,1.4fr)',
                     gap: 2,
                     p: 1.5,
                     borderTop: '1px solid',
@@ -80,6 +121,16 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                     <Chip size="small" label={terminal.channel} sx={channelStyle(terminal.channel)} />
                   </Box>
                   <Box>{terminal.current_version}</Box>
+                  <Box>
+                    {(() => {
+                      const key = keyLabels[keyStatus[terminal.id] || terminal.terminal_key_status] || keyLabels.none;
+                      return (
+                        <Tooltip title={key.hint}>
+                          <Chip size="small" variant="outlined" color={key.color} label={key.label} />
+                        </Tooltip>
+                      );
+                    })()}
+                  </Box>
                   <Box>{fmt(terminal.last_seen_at)}</Box>
                   <Stack direction="row" spacing={1}>
                     <Button
@@ -100,6 +151,13 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                       onClick={() => setDatabaseTerminal(terminal)}
                       aria-label="Banco"
                     />
+                    {(keyStatus[terminal.id] || terminal.terminal_key_status) !== 'none' && (
+                      <Tooltip title="Descartar chave do terminal">
+                        <IconButton size="small" onClick={() => resetKey(terminal)} aria-label="Descartar chave">
+                          <KeyOffIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </Stack>
                 </Box>
               ))}

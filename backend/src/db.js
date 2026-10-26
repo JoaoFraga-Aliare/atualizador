@@ -5,7 +5,18 @@ import path from 'node:path';
 // Para mudar o esquema, acrescente um passo no fim da lista; nunca altere um passo ja publicado.
 const MIGRATIONS = [
   { version: 1, name: 'esquema base', up: baseSchema },
-  { version: 2, name: 'corrige acentuacao das mensagens de eventos', up: fixEventMessageEncoding }
+  { version: 2, name: 'corrige acentuacao das mensagens de eventos', up: fixEventMessageEncoding },
+  {
+    version: 3,
+    name: 'chave propria por terminal',
+    up: db =>
+      db.exec(`
+        ALTER TABLE terminal ADD COLUMN api_key_hash TEXT;
+        ALTER TABLE terminal ADD COLUMN api_key_issued_at TEXT;
+        ALTER TABLE terminal ADD COLUMN api_key_confirmed_at TEXT;
+        CREATE UNIQUE INDEX idx_terminal_api_key ON terminal(api_key_hash) WHERE api_key_hash IS NOT NULL;
+      `)
+  }
 ];
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;
 

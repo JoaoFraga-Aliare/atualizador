@@ -1,6 +1,5 @@
 import proxyaddr from 'proxy-addr';
 import { WebSocketServer } from 'ws';
-import { sameSecret } from './auth.js';
 import { textValue } from './lib/util.js';
 import { normalizeKeyTerminalId } from './lib/error-crypto.js';
 
@@ -37,7 +36,7 @@ export function createLive(db) {
   return { liveTerminals, sendLiveCommand, saveLiveEvent };
 }
 
-export function attachLiveServer(server, { app, db, liveTerminals, sendLiveCommand, saveLiveEvent }) {
+export function attachLiveServer(server, { app, db, terminalKeys, liveTerminals, sendLiveCommand, saveLiveEvent }) {
   const wss = new WebSocketServer({ server, path: '/api/v1/live' });
   // Mesmo criterio do limite HTTP: so falhas de autenticacao contam, por IP real (atras do Nginx).
   const liveAuthFailures = new Map(),
@@ -74,9 +73,11 @@ export function attachLiveServer(server, { app, db, liveTerminals, sendLiveComma
         ws.close(1008, 'too_many_attempts');
         return;
       }
-      if (!sameSecret(token, process.env.INSTALLATION_KEY) || !terminalId) {
-        registerLiveAuthFailure(ip);
-        ws.close(1008, 'unauthorized');
+      const auth = terminalId ? terminalKeys.authenticate(token, terminalId) : { ok: false };
+      if (!auth.ok) {
+        const invalidKey = !auth.error || auth.error === 'invalid_installation_key';
+        if (invalidKey) registerLiveAuthFailure(ip);
+        ws.close(1008, invalidKey ? 'unauthorized' : auth.error);
         return;
       }
       const terminal = db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId);

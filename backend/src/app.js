@@ -19,6 +19,7 @@ import { createLive, attachLiveServer } from './live.js';
 import { createScopeHelpers } from './lib/scopes.js';
 import { createDatabaseBackups } from './database-backups.js';
 import { createAuthMiddleware } from './middleware.js';
+import { createTerminalKeys } from './terminal-keys.js';
 import { registerTerminalRoutes } from './routes/terminal.js';
 import { registerAccountRoutes } from './routes/account.js';
 import { registerCiUploadRoutes } from './routes/ci-upload.js';
@@ -59,7 +60,8 @@ export function createApp() {
   const scopes = createScopeHelpers(db);
   const backups = createDatabaseBackups({ db, packagesPath, databaseBackupsPath });
   backups.migrateLegacyDatabaseBackups();
-  const { adminAuth, installationAuth, ciAuth } = createAuthMiddleware(db);
+  const terminalKeys = createTerminalKeys(db);
+  const { adminAuth, installationAuth, ciAuth } = createAuthMiddleware(db, terminalKeys);
   app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
   app.use(helmet());
   app.use(express.json({ limit: process.env.ERROR_JSON_LIMIT || '12mb' }));
@@ -98,6 +100,7 @@ export function createApp() {
     swaggerUi.setup(openApiDocument, { customSiteTitle: 'Central de Atualização API' })
   );
   const ctx = {
+    terminalKeys,
     db,
     packagesPath,
     incomingPath,
@@ -134,6 +137,6 @@ export function createApp() {
     res.status(status >= 400 && status < 500 ? status : 400).json({ error: e.message || 'internal_error' });
   });
   const server = http.createServer(app);
-  attachLiveServer(server, { app, db, liveTerminals, sendLiveCommand, saveLiveEvent });
+  attachLiveServer(server, { app, db, terminalKeys, liveTerminals, sendLiveCommand, saveLiveEvent });
   return { app, server, port, db };
 }

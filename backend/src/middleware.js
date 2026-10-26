@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { sameSecret, userScopes } from './auth.js';
+import { userScopes } from './auth.js';
+import { bearerToken, requestTerminalId } from './terminal-keys.js';
 
-export function createAuthMiddleware(db) {
+export function createAuthMiddleware(db, terminalKeys) {
   const adminAuth = (req, res, next) => {
     try {
       const token = jwt.verify((req.get('authorization') || '').replace(/^Bearer /, ''), process.env.JWT_SECRET);
@@ -15,12 +16,14 @@ export function createAuthMiddleware(db) {
       res.status(401).json({ error: 'unauthorized' });
     }
   };
+  // Aceita a chave global ou a chave do terminal; rotas multipart repetem a checagem depois de ler o corpo.
   const installationAuth = (req, res, next) => {
-    const value = (req.get('authorization') || '').replace(/^Bearer /, '');
-    if (!sameSecret(value, process.env.INSTALLATION_KEY)) {
-      res.locals.installationAuthFailed = true;
-      return res.status(401).json({ error: 'invalid_installation_key' });
+    const result = terminalKeys.authenticate(bearerToken(req), requestTerminalId(req));
+    if (!result.ok) {
+      if (result.error === 'invalid_installation_key') res.locals.installationAuthFailed = true;
+      return res.status(result.status).json({ error: result.error });
     }
+    req.installation = result;
     next();
   };
   const ciAuth = (req, res, next) => {

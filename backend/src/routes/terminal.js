@@ -11,10 +11,12 @@ import {
   decryptEnvelope,
   encryptErrorPayload
 } from '../lib/error-crypto.js';
+import { bearerToken } from '../terminal-keys.js';
 
 // Rotas usadas pelos terminais (chave de instalacao) e status publico.
 export function registerTerminalRoutes(app, ctx) {
   const {
+    terminalKeys,
     db,
     databaseBackupsPath,
     downloadBase,
@@ -84,6 +86,7 @@ export function registerTerminalRoutes(app, ctx) {
   app.post('/api/v1/updates/check', installationAuth, (req, res) => {
     try {
       const reg = registerInstallation(req.body),
+        terminalKey = req.installation?.type === 'global' ? terminalKeys.issueKey(reg.terminal.id) : null,
         { product = 'pdv', channel = 'production', currentVersion = '0.0.0' } = req.body,
         currentExecutableHash = textValue(req.body.currentExecutableHash)?.toLowerCase() || null;
       if (currentExecutableHash && !/^[a-f0-9]{64}$/.test(currentExecutableHash))
@@ -120,8 +123,11 @@ export function registerTerminalRoutes(app, ctx) {
       db.prepare(
         'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
       ).run(reg.terminal.id, release?.id || null, currentVersion, release?.version || null, status, message, req.ip);
-      if (!release) return res.json({ available: false, currentVersion, currentAuthorized, message });
+      // terminalKey so aparece enquanto o terminal nao confirmou a chave; deve ser guardada e usada no lugar da global.
+      const keyField = terminalKey ? { terminalKey } : {};
+      if (!release) return res.json({ available: false, currentVersion, currentAuthorized, message, ...keyField });
       res.json({
+        ...keyField,
         available: true,
         currentAuthorized,
         releaseId: String(release.id),
@@ -311,6 +317,11 @@ export function registerTerminalRoutes(app, ctx) {
           ? db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId)
           : null;
       if (!terminal) throw new Error('terminal_not_found');
+      const auth = terminalKeys.authenticate(bearerToken(req), terminalId);
+      if (!auth.ok) {
+        if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return res.status(auth.status).json({ error: auth.error });
+      }
       if (!file || path.extname(file.originalname).toLowerCase() !== '.zip') throw new Error('zip_required');
       const folder = path.join(databaseBackupsPath, String(terminal.id));
       fs.mkdirSync(folder, { recursive: true });

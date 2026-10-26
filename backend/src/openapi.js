@@ -37,10 +37,14 @@ export const openApiDocument = {
     '/health': {
       get: {
         tags: ['Status'],
-        summary: 'Verifica a disponibilidade',
+        summary: 'Verifica banco e espaço em disco',
         responses: {
           200: {
             description: 'API disponível',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Health' } } }
+          },
+          503: {
+            description: 'Banco indisponível ou espaço livre abaixo de HEALTH_MIN_FREE_MB',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Health' } } }
           }
         }
@@ -90,6 +94,22 @@ export const openApiDocument = {
           },
           401: { $ref: '#/components/responses/Unauthorized' }
         }
+      }
+    },
+    '/api/v1/auth/logout': {
+      post: {
+        tags: ['Autenticação'],
+        summary: 'Revoga a sessão do painel e apaga o cookie central_session',
+        responses: { 200: { description: 'Sessão encerrada' } }
+      }
+    },
+    '/api/v1/admin/terminals/{id}/reset-key': {
+      post: {
+        tags: ['Administração'],
+        summary: 'Descarta a chave própria do terminal; a próxima consulta emite outra',
+        security: [{ AdminBearer: [] }],
+        parameters: [{ $ref: '#/components/parameters/Id' }],
+        responses: { 200: { description: 'Chave descartada' }, 401: { $ref: '#/components/responses/Unauthorized' } }
       }
     },
     '/api/v1/admin/me/api-token': {
@@ -359,14 +379,21 @@ export const openApiDocument = {
     '/api/v1/admin/releases/{id}': {
       patch: {
         tags: ['Administração'],
-        summary: 'Ativa ou desativa uma release',
+        summary: 'Ativa, bloqueia ou ajusta a liberação gradual de uma release',
         security: [{ AdminBearer: [] }],
         parameters: [{ $ref: '#/components/parameters/Id' }],
         requestBody: {
           required: true,
           content: {
             'application/json': {
-              schema: { type: 'object', required: ['active'], properties: { active: { type: 'boolean' } } }
+              schema: {
+                type: 'object',
+                properties: {
+                  active: { type: 'boolean' },
+                  blocked: { type: 'boolean' },
+                  rolloutPercent: { type: 'integer', minimum: 1, maximum: 100 }
+                }
+              }
             }
           }
         },
@@ -529,7 +556,17 @@ export const openApiDocument = {
       }
     },
     schemas: {
-      Health: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean', example: true } } },
+      Health: {
+        type: 'object',
+        required: ['ok'],
+        properties: {
+          ok: { type: 'boolean', example: true },
+          checks: {
+            type: 'object',
+            description: 'database: ok ou erro; packages e databaseBackups: freeBytes e ok.'
+          }
+        }
+      },
       Error: {
         type: 'object',
         required: ['error'],
@@ -617,6 +654,12 @@ export const openApiDocument = {
           'showNotesPdv'
         ],
         properties: {
+          terminalKey: {
+            type: 'string',
+            example: 'tk_...',
+            description:
+              'Chave propria do terminal, enviada so enquanto ele usa a chave global. Guarde e use no lugar da INSTALLATION_KEY; depois do primeiro uso a global deixa de valer para este terminal.'
+          },
           available: { type: 'boolean', enum: [true] },
           releaseId: { type: 'string', description: 'Identificador estável da publicação.' },
           version: { type: 'string' },
@@ -657,7 +700,16 @@ export const openApiDocument = {
       UpdateUnavailable: {
         type: 'object',
         required: ['available', 'currentVersion'],
-        properties: { available: { type: 'boolean', enum: [false] }, currentVersion: { type: 'string' } }
+        properties: {
+          terminalKey: {
+            type: 'string',
+            example: 'tk_...',
+            description:
+              'Chave propria do terminal, enviada so enquanto ele usa a chave global. Guarde e use no lugar da INSTALLATION_KEY; depois do primeiro uso a global deixa de valer para este terminal.'
+          },
+          available: { type: 'boolean', enum: [false] },
+          currentVersion: { type: 'string' }
+        }
       },
       UpdateEventRequest: {
         type: 'object',

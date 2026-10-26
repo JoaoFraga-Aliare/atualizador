@@ -1,31 +1,17 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
-}
-
 // Sobe a API real num processo separado, com banco e pastas temporarios.
 export async function startServer(t, overrides = {}) {
   const directory = overrides.directory || fs.mkdtempSync(path.join(os.tmpdir(), 'central-routes-'));
-  const port = await freePort();
   const env = {
     ...process.env,
-    PORT: String(port),
+    PORT: '0',
     DATABASE_PATH: path.join(directory, 'updater.db'),
     PACKAGES_PATH: path.join(directory, 'packages'),
     DATABASE_BACKUPS_PATH: path.join(directory, 'bancos'),
@@ -48,7 +34,6 @@ export async function startServer(t, overrides = {}) {
   child.stderr.on('data', data => {
     output += data;
   });
-  const base = `http://127.0.0.1:${port}`;
   const stop = () =>
     new Promise(resolve => {
       if (child.exitCode !== null) return resolve();
@@ -59,15 +44,23 @@ export async function startServer(t, overrides = {}) {
     await stop();
     if (!overrides.directory) fs.rmSync(directory, { recursive: true, force: true });
   });
-  for (let attempt = 0; attempt < 150; attempt += 1) {
-    if (child.exitCode !== null) throw new Error(`API encerrou ao iniciar:\n${output}`);
-    try {
-      if ((await fetch(`${base}/health`)).ok) break;
-    } catch {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    if (attempt === 149) throw new Error(`API nao respondeu:\n${output}`);
-  }
+  // PORT=0: o sistema escolhe a porta e a API informa qual no log, sem corrida entre testes paralelos.
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`API nao respondeu:\n${output}`)), 15000);
+    const onData = () => {
+      const match = output.match(/Central de Atualizacao API: (\d+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(Number(match[1]));
+      }
+    };
+    child.stdout.on('data', onData);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      reject(new Error(`API encerrou ao iniciar:\n${output}`));
+    });
+  });
+  const base = `http://127.0.0.1:${port}`;
   const installationHeaders = { Authorization: `Bearer ${env.INSTALLATION_KEY}`, 'Content-Type': 'application/json' };
   const api = {
     base,

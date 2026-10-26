@@ -207,18 +207,16 @@ export function registerProductThemeRoutes(app, { db, adminAuth, installationAut
         validationRequested &&
         (!currentId || currentId === String(configuration.id)) &&
         (!currentHash || currentHash === configuration.hash);
-    res
-      .set('ETag', `"${configuration.hash}"`)
-      .json({
-        product: req.params.product,
-        theme,
-        referenceDate: [
-          requested.getFullYear(),
-          String(requested.getMonth() + 1).padStart(2, '0'),
-          String(requested.getDate()).padStart(2, '0')
-        ].join('-'),
-        currentThemeValid: validationRequested ? currentThemeValid : null,
-        configuration
-      });
+    res.set('ETag', `"${configuration.hash}"`).json({
+      product: req.params.product,
+      theme,
+      referenceDate: [
+        requested.getFullYear(),
+        String(requested.getMonth() + 1).padStart(2, '0'),
+        String(requested.getDate()).padStart(2, '0')
+      ].join('-'),
+      currentThemeValid: validationRequested ? currentThemeValid : null,
+      configuration
+    });
   });
 }

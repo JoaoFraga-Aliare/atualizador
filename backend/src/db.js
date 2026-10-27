@@ -30,6 +30,15 @@ const MIGRATIONS = [
     version: 5,
     name: 'liberacao gradual das publicacoes',
     up: db => db.exec('ALTER TABLE release ADD COLUMN rollout_percent INTEGER NOT NULL DEFAULT 100')
+  },
+  {
+    version: 6,
+    name: 'hash do executavel instalado por terminal',
+    up: db =>
+      db.exec(`
+        ALTER TABLE terminal ADD COLUMN executable_sha256 TEXT;
+        ALTER TABLE terminal ADD COLUMN executable_status TEXT;
+      `)
   }
 ];
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;

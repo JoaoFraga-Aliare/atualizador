@@ -88,7 +88,9 @@ test('update check, publishing, targeting, signature and admin listings', async 
   assert.equal(check.body.currentAuthorized, true);
   check = await api.check({ currentVersion: '2.0.0', currentExecutableHash: sha256('OUTRO') });
   assert.equal(check.body.currentAuthorized, false);
-  assert.match(check.body.message, /não corresponde/);
+  // Hash nao homologado: a Central libera a ultima publicacao para o terminal se corrigir.
+  assert.equal(check.body.available, true);
+  assert.equal(check.body.version, '2.0.0');
 
   const clients = await api.json('/api/v1/admin/clients', { headers: admin });
   assert.equal(clients.status, 200);
@@ -159,6 +161,7 @@ test('update check, publishing, targeting, signature and admin listings', async 
 
   const terminal = (await api.json(`/api/v1/admin/clients/${client.id}/terminals`, { headers: admin })).body;
   const terminalId = (Array.isArray(terminal) ? terminal : terminal.items || terminal.terminals)[0].id;
+  assert.equal((Array.isArray(terminal) ? terminal : terminal.items || terminal.terminals)[0].executable_status, 'outdated');
   const releaseId = first.body.id;
   const listings = [
     '/api/v1/admin/me',

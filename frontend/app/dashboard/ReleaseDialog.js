@@ -43,6 +43,16 @@ export default function ReleaseDialog({ open, close, clients, products, done, se
     [artifactChannels, setArtifactChannels] = useState(channels),
     [error, setError] = useState('');
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  function loadChangelog(id) {
+    api(`/admin/artifacts/${id}/changelog`)
+      .then(({ changelog }) => {
+        if (changelog)
+          setForm(current =>
+            current.artifactId === id && !current.technicalNotes ? { ...current, technicalNotes: changelog } : current
+          );
+      })
+      .catch(() => {});
+  }
   useEffect(() => {
     if (!open) return;
     setError('');
@@ -68,6 +78,7 @@ export default function ReleaseDialog({ open, close, clients, products, done, se
             channel: allowed.includes(artifact.channel) ? artifact.channel : allowed[0],
             artifactType: 'package'
           }));
+          loadChangelog(artifact.id);
         }
       })
       .catch(e => setError(e.message));
@@ -90,9 +101,11 @@ export default function ReleaseDialog({ open, close, clients, products, done, se
       productId: product?.id || '',
       version: artifact.version,
       channel: allowed.includes(artifact.channel) ? artifact.channel : allowed[0],
-      artifactType: 'package'
+      artifactType: 'package',
+      technicalNotes: ''
     }));
     setFile(null);
+    loadChangelog(id);
   }
   async function send() {
     try {

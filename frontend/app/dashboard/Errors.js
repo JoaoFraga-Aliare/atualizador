@@ -326,6 +326,55 @@ function Carousel({ items = [] }) {
   );
 }
 
+const mapStatusText = {
+  no_address: 'O PDV não enviou endereço nem stack trace com endereços, então não foi possível consultar o .map.',
+  package_not_found: 'O pacote desta versão não está mais disponível para consultar o .map.',
+  map_not_found: 'O pacote desta versão não contém o arquivo .map do executável.',
+  unresolved: 'Os endereços informados não correspondem a nenhum ponto do código no .map desta versão.',
+  map_error: 'Não foi possível ler o .map desta versão.'
+};
+
+function MapAnalysis({ value }) {
+  if (!value || (!value.frames?.length && !value.hints?.length && value.status === 'no_address')) return null;
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Typography fontWeight={700}>Análise do .map{value.map ? ` (${value.map})` : ''}</Typography>
+      {value.status !== 'resolved' && (
+        <Typography variant="body2" color="text.secondary" mt={1}>
+          {mapStatusText[value.status] || ''}
+        </Typography>
+      )}
+      {value.frames?.length > 0 && (
+        <Stack spacing={1} mt={1}>
+          {value.frames.map((frame, index) => (
+            <Box key={index}>
+              <Typography variant="body2" fontWeight={600}>
+                {frame.kind === 'exception' ? 'Ponto da exceção' : `Chamada ${index}`}: {frame.procedure || frame.unit}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {frame.file || frame.unit}
+                {frame.line ? `, linha ${frame.line}` : ''} · endereço {frame.address}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+      )}
+      {value.hints?.length > 0 && (
+        <Box mt={1.5}>
+          <Typography variant="body2" fontWeight={600}>
+            O que pode ser
+          </Typography>
+          {value.hints.map(hint => (
+            <Typography key={hint} variant="body2">
+              • {hint}
+            </Typography>
+          ))}
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
 function Details({ value, close, save }) {
   const [ignored, setIgnored] = useState(false),
     [release, setRelease] = useState('');
@@ -366,6 +415,7 @@ function Details({ value, close, save }) {
             {'\n'}
             {value.stackTrace || 'Não informado.'}
           </Typography>
+          <MapAnalysis value={value.mapAnalysis} />
           <Box>
             <Typography fontWeight={700} mb={1}>
               Prints das ocorrências

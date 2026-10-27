@@ -133,16 +133,25 @@ export function registerTerminalRoutes(app, ctx) {
                   r.published_at > currentRelease.published_at ||
                   (r.published_at === currentRelease.published_at && r.id > currentRelease.id)
               )
-            : null
+            : releases.find(r => r.executable_sha256?.toLowerCase() !== currentExecutableHash)
           : releases.find(r => compareVersions(r.version, currentVersion) > 0),
         currentAuthorized = !currentExecutableHash || Boolean(currentRelease),
         policy = getReleasePolicy(release),
         status = !currentAuthorized ? 'version_not_homologated' : release ? 'update_available' : 'no_update',
         message = !currentAuthorized
-          ? 'A versão atual não corresponde ao hash de uma publicação homologada.'
+          ? release
+            ? `A versão atual não corresponde ao hash de uma publicação homologada; atualização para ${release.version} liberada.`
+            : 'A versão atual não corresponde ao hash de uma publicação homologada.'
           : release
             ? `Versão ${release.version} disponível (${release.artifact_type})${policy.deadlineExpired ? ' e obrigatória por prazo vencido' : ''}.`
             : 'Terminal já está atualizado.';
+      // Sem hash o estado anterior e preservado; com hash fica authorized ou outdated.
+      if (currentExecutableHash)
+        db.prepare('UPDATE terminal SET executable_sha256=?,executable_status=? WHERE id=?').run(
+          currentExecutableHash,
+          currentAuthorized ? 'authorized' : 'outdated',
+          reg.terminal.id
+        );
       db.prepare(
         'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
       ).run(reg.terminal.id, release?.id || null, currentVersion, release?.version || null, status, message, req.ip);

@@ -2,10 +2,12 @@ import { isRegressionAfterFix } from '../version.js';
 import { textValue } from '../lib/util.js';
 import { normalizeScreenshot, decryptStoredError, errorSignature } from '../lib/error-crypto.js';
 import { publicTerminal } from '../terminal-keys.js';
+import { analyzeError } from '../map-resolver.js';
+import path from 'node:path';
 
 // Painel: erros de producao e notificacoes.
 export function registerAdminErrorRoutes(app, ctx) {
-  const { db, adminAuth, allowedProductCodes } = ctx;
+  const { db, adminAuth, allowedProductCodes, packagesPath } = ctx;
   app.get('/api/v1/admin/errors/settings', adminAuth, (_req, res) => {
     const setting = db.prepare('SELECT store_screenshot FROM error_setting WHERE id=1').get();
     res.json({ storeScreenshot: Boolean(setting?.store_screenshot) });
@@ -488,6 +490,21 @@ export function registerAdminErrorRoutes(app, ctx) {
             `SELECT r.id,r.version,r.channel FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? ORDER BY r.published_at DESC,r.id DESC`
           )
           .all(error.product_code);
+      const packageRelease =
+          (error.detected_release_id &&
+            db.prepare('SELECT file_path FROM release WHERE id=? AND deleted_at IS NULL').get(error.detected_release_id)) ||
+          (payload.version &&
+            db
+              .prepare(
+                `SELECT r.file_path FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? AND r.version=? AND r.artifact_type='package' AND r.deleted_at IS NULL ORDER BY r.published_at DESC,r.id DESC`
+              )
+              .get(error.product_code, String(payload.version))),
+        packageFile = packageRelease ? path.resolve(packagesPath, packageRelease.file_path) : null,
+        mapAnalysis = analyzeError({
+          payload,
+          productCode: error.product_code,
+          packageFile: packageFile?.startsWith(packagesPath + path.sep) ? packageFile : null
+        });
       res.set('Cache-Control', 'no-store, private').json({
         id: error.id,
         product_code: error.product_code,
@@ -501,7 +518,8 @@ export function registerAdminErrorRoutes(app, ctx) {
           fixedVersion: rule?.fixed_version || null
         },
         releases,
-        ...payload
+        ...payload,
+        mapAnalysis
       });
     } finally {
       if (decrypted) {

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { normalizeFutureDeadline, normalizeRolloutPercent } from '../release.js';
+import { readArtifactChangelog } from '../ci-artifacts.js';
+import { normalizeFutureDeadline,normalizeRolloutPercent } from '../release.js';
 import { CHANNELS, canAccess } from '../auth.js';
 import { addGeneratedManifest } from '../package-manifest.js';
 import { releaseAnalytics, softDeleteRelease } from '../release-history.js';
@@ -151,6 +152,12 @@ export function registerAdminReleaseRoutes(app, ctx) {
           return res.status(403).json({ error: 'scope_denied' });
         }
         const deadlineAt = normalizeFutureDeadline(req.body.deadlineAt);
+        let technicalNotes = String(req.body.technicalNotes || '').trim() || null;
+        if (!technicalNotes && ciArtifact) {
+          const zipFile = path.resolve(packagesPath, ciArtifact.file_path);
+          if (zipFile.startsWith(packagesPath + path.sep) && fs.existsSync(zipFile))
+            technicalNotes = readArtifactChangelog(zipFile);
+        }
         const ids = JSON.parse(req.body.targetClientIds || '[]');
         if (req.body.targetType !== 'all' && !ids.length) throw new Error('target_required');
         const folder = path.join(packagesPath, product.code);
@@ -189,7 +196,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
             req.body.mandatory === 'true' ? 1 : 0,
             req.body.minimumVersion || null,
             req.body.notes || null,
-            req.body.technicalNotes || null,
+            technicalNotes,
             req.body.showNotesPdv === 'true' ? 1 : 0,
             artifactType,
             originalName,

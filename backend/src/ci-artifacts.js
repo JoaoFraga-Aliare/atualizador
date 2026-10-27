@@ -49,7 +49,15 @@ export function readArtifactZip(file) {
   return result;
 }
 
-const artifactSelect = `SELECT a.*,p.id product_id,p.name product_name,u.name user_name,u.username,
+export function readArtifactChangelog(file) {
+  const files = readArtifactZip(file),
+    entry = files.get('changelog.md') || [...files.entries()].find(([key]) => key.endsWith('/changelog.md'))?.[1];
+  return entry
+    ? new TextDecoder('utf-8').decode(entry.data).replace(/^﻿/, '').trim() || null
+    : null;
+}
+
+const artifactSelect =`SELECT a.*,p.id product_id,p.name product_name,u.name user_name,u.username,
   COALESCE((SELECT group_concat(ac.channel) FROM ci_artifact_channel ac WHERE ac.artifact_id=a.id),a.channel) allowed_channels,
   CASE WHEN a.consumed_at IS NULL THEN 'pending' ELSE 'released' END status
   FROM ci_artifact a LEFT JOIN product p ON p.code=a.product_code LEFT JOIN app_user u ON u.id=a.user_id`;
@@ -121,7 +129,15 @@ export function registerCiArtifactRoutes(app, { db, adminAuth, packagesPath, inc
       next(e);
     }
   });
-  app.get('/api/v1/admin/artifacts/:id/download', adminAuth, (req, res, next) => {
+  app.get('/api/v1/admin/artifacts/:id/changelog', adminAuth, (req, res, next) => {
+    try {
+      const artifact = visibleArtifact(db, req, req.params.id, { pending: true });
+      res.json({ changelog: readArtifactChangelog(artifactFile(packagesPath, artifact)) });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/v1/admin/artifacts/:id/download',adminAuth, (req, res, next) => {
     try {
       const artifact = visibleArtifact(db, req, req.params.id),
         file = artifactFile(packagesPath, artifact);

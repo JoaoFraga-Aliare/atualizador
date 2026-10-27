@@ -11,6 +11,9 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
@@ -22,6 +25,7 @@ import {
   Download as DownloadIcon,
   History as HistoryIcon,
   KeyOff as KeyOffIcon,
+  MoreVert as MoreVertIcon,
   ReceiptLong as ReceiptLongIcon,
   Settings as SettingsIcon,
   Storage as StorageIcon
@@ -120,7 +124,14 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                   <Box>
                     <Chip size="small" label={terminal.channel} sx={channelStyle(terminal.channel)} />
                   </Box>
-                  <Box>{terminal.current_version}</Box>
+                  <Box>
+                    {terminal.current_version}
+                    {terminal.executable_status === 'outdated' && (
+                      <Tooltip title={`O executável instalado não confere com o hash da versão ${terminal.current_version} na Central.`}>
+                        <Chip size="small" color="error" label="Desatualizado" sx={{ ml: 1 }} />
+                      </Tooltip>
+                    )}
+                  </Box>
                   <Box>
                     {(() => {
                       const key = keyLabels[keyStatus[terminal.id] || terminal.terminal_key_status] || keyLabels.none;
@@ -132,33 +143,14 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                     })()}
                   </Box>
                   <Box>{fmt(terminal.last_seen_at)}</Box>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      startIcon={<ReceiptLongIcon />}
-                      onClick={() => showLog(terminal)}
-                      aria-label="Ver log"
-                    />
-                    <Button
-                      size="small"
-                      startIcon={<BugReportIcon />}
-                      onClick={() => showErrors(terminal)}
-                      aria-label="Ver erros"
-                    />
-                    <Button
-                      size="small"
-                      startIcon={<StorageIcon />}
-                      onClick={() => setDatabaseTerminal(terminal)}
-                      aria-label="Banco"
-                    />
-                    {(keyStatus[terminal.id] || terminal.terminal_key_status) !== 'none' && (
-                      <Tooltip title="Descartar chave do terminal">
-                        <IconButton size="small" onClick={() => resetKey(terminal)} aria-label="Descartar chave">
-                          <KeyOffIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </Stack>
+                  <TerminalActionsMenu
+                    terminal={terminal}
+                    hasKey={(keyStatus[terminal.id] || terminal.terminal_key_status) !== 'none'}
+                    showLog={showLog}
+                    showErrors={showErrors}
+                    showDatabase={setDatabaseTerminal}
+                    resetKey={resetKey}
+                  />
                 </Box>
               ))}
             </Box>
@@ -175,6 +167,51 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
       </Dialog>
       <DatabaseDialog client={client} terminal={databaseTerminal} close={() => setDatabaseTerminal(null)} />
     </>
+  );
+}
+
+function TerminalActionsMenu({ terminal, hasKey, showLog, showErrors, showDatabase, resetKey }) {
+  const [anchor, setAnchor] = useState(null);
+  const run = action => () => {
+    setAnchor(null);
+    action(terminal);
+  };
+  return (
+    <Box>
+      <Tooltip title="Ações">
+        <IconButton size="small" aria-label="Ações" onClick={e => setAnchor(e.currentTarget)}>
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+        <MenuItem onClick={run(showLog)}>
+          <ListItemIcon>
+            <ReceiptLongIcon fontSize="small" />
+          </ListItemIcon>
+          Ver log
+        </MenuItem>
+        <MenuItem onClick={run(showErrors)}>
+          <ListItemIcon>
+            <BugReportIcon fontSize="small" />
+          </ListItemIcon>
+          Ver erros
+        </MenuItem>
+        <MenuItem onClick={run(showDatabase)}>
+          <ListItemIcon>
+            <StorageIcon fontSize="small" />
+          </ListItemIcon>
+          Banco
+        </MenuItem>
+        {hasKey && (
+          <MenuItem onClick={run(resetKey)}>
+            <ListItemIcon>
+              <KeyOffIcon fontSize="small" />
+            </ListItemIcon>
+            Descartar chave
+          </MenuItem>
+        )}
+      </Menu>
+    </Box>
   );
 }
 

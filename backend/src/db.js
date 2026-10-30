@@ -39,6 +39,29 @@ const MIGRATIONS = [
         ALTER TABLE terminal ADD COLUMN executable_sha256 TEXT;
         ALTER TABLE terminal ADD COLUMN executable_status TEXT;
       `)
+  },
+  {
+    version: 7,
+    name: 'usuarios do Hub (desenvolvedores) e vinculo com clientes do Hub',
+    up: db =>
+      db.exec(`
+        ALTER TABLE app_user ADD COLUMN hub_role TEXT CHECK(hub_role IS NULL OR hub_role='developer');
+        CREATE TABLE hub_user_tenant(user_id INTEGER NOT NULL,tenant_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('homologation','client')),approved_at TEXT,approved_by INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,tenant_id),FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE,FOREIGN KEY(approved_by) REFERENCES app_user(id) ON DELETE SET NULL);
+        CREATE INDEX idx_hub_user_tenant_tenant ON hub_user_tenant(tenant_id);
+      `)
+  },
+  {
+    version: 8,
+    name: 'dados da empresa e contato dos usuarios do Hub',
+    up: db =>
+      db.exec(`
+        CREATE TABLE hub_user_profile(user_id INTEGER PRIMARY KEY,document TEXT,company TEXT,contact_name TEXT,contact_email TEXT,contact_phone TEXT,FOREIGN KEY(user_id) REFERENCES app_user(id) ON DELETE CASCADE);
+      `)
+  },
+  {
+    version: 9,
+    name: 'homologacao: quantos itens obrigatorios faltavam quando foi liberada',
+    up: db => db.exec('ALTER TABLE hub_user_tenant ADD COLUMN approved_missing INTEGER')
   }
 ];
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;

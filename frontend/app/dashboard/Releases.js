@@ -21,8 +21,6 @@ import {
   Select,
   Stack,
   Switch,
-  Tab,
-  Tabs,
   TextField,
   Tooltip,
   Typography
@@ -37,32 +35,11 @@ import {
   Replay as ReplayIcon,
   Visibility as VisibilityIcon
 } from '@mui/icons-material';
-import CiArtifacts from './CiArtifacts';
 import { Chip, PublishButton, Item, ConfirmDialog, Grid } from './components';
 import { channels, fmt, fmtDay } from './format';
 import { api } from '../../lib/api';
 
-export function Releases(props) {
-  const [tab, setTab] = useState('versions');
-  return (
-    <>
-      <Tabs
-        value={tab}
-        onChange={(_, value) => setTab(value)}
-        sx={{ mb: 2, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
-        <Tab value="versions" label="Versão" />
-        <Tab value="cicd" label="CI/CD" />
-      </Tabs>
-      {tab === 'versions' ? (
-        <ReleasedVersions {...props} create={() => props.create()} />
-      ) : (
-        <CiArtifacts release={props.create} notify={props.done} />
-      )}
-    </>
-  );
-}
-function ReleasedVersions({ items, products, clients = [], create, done }) {
+export function ReleasedVersions({ items, products, clients = [], create, done }) {
   const [product, setProduct] = useState(''),
     [channel, setChannel] = useState(''),
     [status, setStatus] = useState('active'),

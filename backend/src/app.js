@@ -28,6 +28,9 @@ import { registerAdminTerminalRoutes } from './routes/admin-terminals.js';
 import { registerAdminReleaseRoutes } from './routes/admin-releases.js';
 import { registerAdminErrorRoutes } from './routes/admin-errors.js';
 import { registerAdminUserRoutes } from './routes/admin-users.js';
+import { registerAdminHubRoutes } from './routes/admin-hub.js';
+import { registerAdminHubProxyRoutes } from './routes/admin-hub-proxy.js';
+import { createHubClient } from './hub-client.js';
 
 // Monta a API: banco, chave de assinatura, middlewares, rotas e WebSocket.
 export function createApp() {
@@ -137,6 +140,7 @@ export function createApp() {
     liveTerminals,
     sendLiveCommand,
     saveLiveEvent,
+    hub: createHubClient(),
     ...scopes,
     ...backups
   };
@@ -150,6 +154,8 @@ export function createApp() {
   registerProductThemeRoutes(app, { db, adminAuth, installationAuth, upload, packagesPath });
   registerAdminErrorRoutes(app, ctx);
   registerAdminUserRoutes(app, ctx);
+  registerAdminHubRoutes(app, ctx);
+  registerAdminHubProxyRoutes(app, ctx);
   app.use((e, _q, res, _n) => {
     const status = Number(e.status || e.statusCode);
     if (status === 404) return res.status(404).json({ error: 'not_found' });

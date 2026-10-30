@@ -1,3 +1,4 @@
+import { debugEnabled, debugRequest } from './debug-data';
 // A sessao vai no cookie httpOnly definido no login; o navegador o envia sozinho.
 function sessionExpired() {
   localStorage.removeItem('allowedChannels');
@@ -6,6 +7,7 @@ function sessionExpired() {
 }
 
 export async function api(path, options = {}) {
+  if (debugEnabled()) return debugRequest(path, options);
   const response = await fetch(`/api/v1${path}`, {
     ...options,
     credentials: 'same-origin',
@@ -23,6 +25,7 @@ export async function api(path, options = {}) {
 }
 
 export async function apiBlob(path) {
+  if (debugEnabled()) throw new Error('Indisponível no modo debug');
   const response = await fetch(`/api/v1${path}`, { credentials: 'same-origin' });
   if (response.status === 401) sessionExpired();
   if (!response.ok) {

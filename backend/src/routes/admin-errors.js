@@ -492,7 +492,9 @@ export function registerAdminErrorRoutes(app, ctx) {
           .all(error.product_code);
       const packageRelease =
           (error.detected_release_id &&
-            db.prepare('SELECT file_path FROM release WHERE id=? AND deleted_at IS NULL').get(error.detected_release_id)) ||
+            db
+              .prepare('SELECT file_path FROM release WHERE id=? AND deleted_at IS NULL')
+              .get(error.detected_release_id)) ||
           (payload.version &&
             db
               .prepare(

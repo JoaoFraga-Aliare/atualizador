@@ -21,7 +21,7 @@ const fmt = value =>
   value ? new Date(value.includes('T') ? value : value.replace(' ', 'T') + 'Z').toLocaleString('pt-BR') : '-';
 const keyOf = item => `${item.type || 'regression'}:${item.id}`;
 
-export default function NotificationsBell() {
+export default function NotificationsBell({ admin = false }) {
   const [data, setData] = useState({ items: [], reads: new Set() }),
     [open, setOpen] = useState(false),
     [error, setError] = useState(''),
@@ -30,11 +30,14 @@ export default function NotificationsBell() {
     [cleanup, setCleanup] = useState(null);
   async function load() {
     try {
-      const [regressions, hashes, cleanupData, reads] = await Promise.all([
+      const [regressions, hashes, cleanupData, reads, hubLogs, hubAlerts] = await Promise.all([
           api('/admin/notifications'),
           api('/admin/hash-notifications'),
           api('/admin/release-cleanup'),
-          api('/admin/notification-reads')
+          api('/admin/notification-reads'),
+          // Erros do Hub (menu Hub > Logs define quais): so o administrador; Hub fora do ar nao atrapalha o sino
+          admin ? api('/admin/hub/logs/notifications').catch(() => ({ itens: [] })) : { itens: [] },
+          admin ? api('/admin/hub/alerts').catch(() => ({ abertos: [] })) : { abertos: [] }
         ]),
         unique = new Map(),
         cleanupItem = cleanupData.count
@@ -46,7 +49,21 @@ export default function NotificationsBell() {
               cleanup: cleanupData
             }
           : null;
-      for (const item of [...hashes.items, ...regressions.items, ...(cleanupItem ? [cleanupItem] : [])])
+      const hubItems = hubLogs.itens.map(x => ({
+        type: 'hub_log',
+        id: x.id,
+        receivedAt: new Date(x.ultimo_em).toISOString(),
+        client: x.empresa || 'Hub',
+        hub: x
+      }));
+      const alertItems = hubAlerts.abertos.map(a => ({
+        type: 'hub_alert',
+        id: `${a.chave}@${a.aberto_em}`.slice(0, 90),
+        receivedAt: new Date(a.aberto_em).toISOString(),
+        client: 'Hub',
+        alert: a
+      }));
+      for (const item of [...hashes.items, ...regressions.items, ...hubItems, ...alertItems, ...(cleanupItem ? [cleanupItem] : [])])
         unique.set(keyOf(item), item);
       setData({
         items: [...unique.values()].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
@@ -170,9 +187,21 @@ export default function NotificationsBell() {
   );
 }
 
+const hubChannel = { 'terminal->hub': 'PDV/Integrador', 'hub->erp': 'Agrosys', 'cliente->hub': 'Sistema do cliente (API)' };
+const hubLogTitle = x =>
+  `${hubChannel[x.canal] || x.canal}: ${x.resultado === 'erro' ? 'erro' : 'recusado'} (${x.total}x nas últimas 24 h)`;
+const hubLogText = x =>
+  [x.operacao || x.rota, x.status ? `HTTP ${x.status}` : null, x.mensagem].filter(Boolean).join(' — ');
+
 function NotificationCard({ item, read, mark, showError, showTerminal, showCleanup }) {
   const cleanup = item.type === 'release_cleanup',
-    title = cleanup
+    hubLog = item.type === 'hub_log',
+    hubAlert = item.type === 'hub_alert',
+    title = hubAlert
+      ? item.alert.titulo
+      : hubLog
+      ? hubLogTitle(item.hub)
+      : cleanup
       ? 'Limpeza de versões antigas'
       : item.type === 'executable_hash'
         ? item.hashStatus === 'unauthorized'
@@ -197,10 +226,10 @@ function NotificationCard({ item, read, mark, showError, showTerminal, showClean
               {fmt(item.receivedAt)} — {item.client}
             </Typography>
           )}
-          <Typography variant="body2">{item.message}</Typography>
+          <Typography variant="body2">{hubAlert ? item.alert.detalhe : hubLog ? hubLogText(item.hub) : item.message}</Typography>
         </Box>
         <Stack direction="row" alignItems="center" spacing={1}>
-          {cleanup ? (
+          {hubLog || hubAlert ? null : cleanup ? (
             <Button variant="contained" color="warning" onClick={showCleanup}>
               Revisar e excluir
             </Button>

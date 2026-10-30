@@ -41,7 +41,8 @@ export function parseMap(text) {
       if (m && m[1] === CODE_SEGMENT) publics.push({ offset: parseInt(m[2], 16), name: m[3] });
     } else if (mode === 'lines' && unit) {
       for (const m of raw.matchAll(LINE_ENTRY))
-        if (m[2] === CODE_SEGMENT) lines.push({ offset: parseInt(m[3], 16), line: Number(m[1]), unit: unit.name, file: unit.file });
+        if (m[2] === CODE_SEGMENT)
+          lines.push({ offset: parseInt(m[3], 16), line: Number(m[1]), unit: unit.name, file: unit.file });
     }
   }
   const byOffset = (a, b) => a.offset - b.offset;
@@ -86,7 +87,9 @@ export function resolveAddress(map, address, { returnAddress = false } = {}) {
     symbol = publicIndex >= 0 && map.publics[publicIndex].offset >= module.start ? map.publics[publicIndex] : null,
     lineIndex = floorIndex(map.lines, offset, x => x.offset),
     line =
-      lineIndex >= 0 && map.lines[lineIndex].unit.toLowerCase() === module.name.toLowerCase() && map.lines[lineIndex].offset >= module.start
+      lineIndex >= 0 &&
+      map.lines[lineIndex].unit.toLowerCase() === module.name.toLowerCase() &&
+      map.lines[lineIndex].offset >= module.start
         ? map.lines[lineIndex]
         : null;
   return {
@@ -107,7 +110,8 @@ export function loadMapFromPackage(zipFile, preferredNames = []) {
   const files = readArtifactZip(zipFile),
     maps = [...files.values()].filter(x => x.name.toLowerCase().endsWith('.map')),
     wanted = preferredNames.map(x => x.toLowerCase()),
-    entry = wanted.map(name => maps.find(x => path.posix.basename(x.name).toLowerCase() === name)).find(Boolean) || null;
+    entry =
+      wanted.map(name => maps.find(x => path.posix.basename(x.name).toLowerCase() === name)).find(Boolean) || null;
   const result = entry ? { name: entry.name, map: parseMap(new TextDecoder('latin1').decode(entry.data)) } : null;
   cache.set(key, result);
   if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
@@ -115,23 +119,54 @@ export function loadMapFromPackage(zipFile, preferredNames = []) {
 }
 
 const HINTS = [
-  [/EAccessViolation/i, 'Acesso a memória inválida: normalmente objeto nil, já liberado (Free) ou ponteiro não inicializado. Verifique se o objeto foi criado antes do uso.'],
-  [/EDivByZero|EZeroDivide/i, 'Divisão por zero: confira se o divisor (quantidade, parcelas, fator) pode chegar zerado.'],
-  [/EInvalidOp|EOverflow|EUnderflow/i, 'Operação de ponto flutuante inválida: valores NaN/infinito ou fora do intervalo em cálculos.'],
-  [/EConvertError|EVariantError|EVariantTypeCastError/i, 'Falha de conversão de tipo: texto/valor em formato inesperado (número, data, boolean) ou campo nulo.'],
-  [/ERangeError|EIntOverflow|EListError|EStringListError/i, 'Índice fora do limite: acesso a posição inexistente em lista, array ou string.'],
-  [/EOleException|EOleSysError/i, 'Erro de COM/OLE (ex.: Excel, impressora fiscal, ADO). Veja o código HRESULT e se o componente está instalado/registrado.'],
-  [/EDatabaseError|EFDDBEngineException|EFDException|EZSQLException/i, 'Erro de banco de dados: conexão, SQL inválido, constraint, campo/tabela inexistente ou dataset fechado.'],
-  [/EFOpenError|EFCreateError|EInOutError|EFileStreamError/i, 'Falha de arquivo: arquivo ausente, em uso por outro processo ou sem permissão de acesso.'],
-  [/ESocketError|EIdSocketError|EIdConnClosedGracefully|EIdReadTimeout|ESSL|EIdHTTPProtocolException/i, 'Falha de rede: servidor indisponível, timeout, conexão encerrada ou certificado inválido.'],
-  [/EOutOfMemory|EStackOverflow/i, 'Falta de memória ou recursão infinita: procure por loops de chamada (evento que dispara a si mesmo).'],
+  [
+    /EAccessViolation/i,
+    'Acesso a memória inválida: normalmente objeto nil, já liberado (Free) ou ponteiro não inicializado. Verifique se o objeto foi criado antes do uso.'
+  ],
+  [
+    /EDivByZero|EZeroDivide/i,
+    'Divisão por zero: confira se o divisor (quantidade, parcelas, fator) pode chegar zerado.'
+  ],
+  [
+    /EInvalidOp|EOverflow|EUnderflow/i,
+    'Operação de ponto flutuante inválida: valores NaN/infinito ou fora do intervalo em cálculos.'
+  ],
+  [
+    /EConvertError|EVariantError|EVariantTypeCastError/i,
+    'Falha de conversão de tipo: texto/valor em formato inesperado (número, data, boolean) ou campo nulo.'
+  ],
+  [
+    /ERangeError|EIntOverflow|EListError|EStringListError/i,
+    'Índice fora do limite: acesso a posição inexistente em lista, array ou string.'
+  ],
+  [
+    /EOleException|EOleSysError/i,
+    'Erro de COM/OLE (ex.: Excel, impressora fiscal, ADO). Veja o código HRESULT e se o componente está instalado/registrado.'
+  ],
+  [
+    /EDatabaseError|EFDDBEngineException|EFDException|EZSQLException/i,
+    'Erro de banco de dados: conexão, SQL inválido, constraint, campo/tabela inexistente ou dataset fechado.'
+  ],
+  [
+    /EFOpenError|EFCreateError|EInOutError|EFileStreamError/i,
+    'Falha de arquivo: arquivo ausente, em uso por outro processo ou sem permissão de acesso.'
+  ],
+  [
+    /ESocketError|EIdSocketError|EIdConnClosedGracefully|EIdReadTimeout|ESSL|EIdHTTPProtocolException/i,
+    'Falha de rede: servidor indisponível, timeout, conexão encerrada ou certificado inválido.'
+  ],
+  [
+    /EOutOfMemory|EStackOverflow/i,
+    'Falta de memória ou recursão infinita: procure por loops de chamada (evento que dispara a si mesmo).'
+  ],
   [/EInvalidPointer/i, 'Ponteiro inválido: liberação dupla de memória ou objeto já destruído.'],
   [/EAbort/i, 'Operação abortada intencionalmente (Abort); normalmente não indica falha.']
 ];
 
 export function exceptionHints(exceptionClass, message) {
   const hints = HINTS.filter(([pattern]) => pattern.test(exceptionClass || '')).map(([, text]) => text);
-  if (/out of memory|mem[oó]ria/i.test(message || '')) hints.push('A mensagem cita memória: verifique consumo e vazamentos no terminal.');
+  if (/out of memory|mem[oó]ria/i.test(message || ''))
+    hints.push('A mensagem cita memória: verifique consumo e vazamentos no terminal.');
   if (/access violation/i.test(message || '') && !hints.length) hints.push(HINTS[0][1]);
   return hints;
 }

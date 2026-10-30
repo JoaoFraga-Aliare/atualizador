@@ -127,7 +127,9 @@ export default function ClientTerminalsDialog({ client, terminals, close, showLo
                   <Box>
                     {terminal.current_version}
                     {terminal.executable_status === 'outdated' && (
-                      <Tooltip title={`O executável instalado não confere com o hash da versão ${terminal.current_version} na Central.`}>
+                      <Tooltip
+                        title={`O executável instalado não confere com o hash da versão ${terminal.current_version} na Central.`}
+                      >
                         <Chip size="small" color="error" label="Desatualizado" sx={{ ml: 1 }} />
                       </Tooltip>
                     )}

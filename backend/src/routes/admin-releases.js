@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readArtifactChangelog } from '../ci-artifacts.js';
-import { normalizeFutureDeadline,normalizeRolloutPercent } from '../release.js';
+import { normalizeFutureDeadline, normalizeRolloutPercent } from '../release.js';
 import { CHANNELS, canAccess } from '../auth.js';
 import { addGeneratedManifest } from '../package-manifest.js';
 import { releaseAnalytics, softDeleteRelease } from '../release-history.js';

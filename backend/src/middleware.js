@@ -25,7 +25,9 @@ export function createAuthMiddleware(db, terminalKeys, sessions) {
       }
       if (!sameOrigin) return res.status(403).json({ error: 'invalid_origin' });
     }
-    const user = db.prepare('SELECT id,username,name,role,active FROM app_user WHERE id=?').get(session.userId);
+    const user = db
+      .prepare('SELECT id,username,name,role,hub_role,active FROM app_user WHERE id=?')
+      .get(session.userId);
     if (!user?.active) return res.status(401).json({ error: 'unauthorized' });
     req.user = user;
     req.session = session;

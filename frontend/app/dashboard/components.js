@@ -18,7 +18,14 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
-import { Add as AddIcon, Home as HomeIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Business as BusinessIcon,
+  Devices as DevicesIcon,
+  ErrorOutline as ErrorOutlineIcon,
+  Home as HomeIcon,
+  RocketLaunch as RocketLaunchIcon
+} from '@mui/icons-material';
 import { allowedChannels, channelColors } from './format';
 
 // Chip com a cor do canal quando o rotulo e test, beta ou production.
@@ -96,21 +103,58 @@ export function ConfirmDialog({ value, close }) {
 }
 
 const STATS = [
-  { key: 'clients', label: 'Clientes' },
-  { key: 'terminals', label: 'Terminais' },
-  { key: 'releases', label: 'Versões ativas' },
-  { key: 'errors', label: 'Erros em 7 dias' }
+  { key: 'clients', label: 'Clientes', icon: BusinessIcon, tint: '#1570ef', bg: '#eff4ff' },
+  { key: 'terminals', label: 'Terminais', icon: DevicesIcon, tint: '#7a5af8', bg: '#f4f3ff' },
+  { key: 'releases', label: 'Versões ativas', icon: RocketLaunchIcon, tint: '#34bdcf', bg: '#e3f6f9' },
+  { key: 'errors', label: 'Erros em 7 dias', icon: ErrorOutlineIcon, tint: '#d92d20', bg: '#fef3f2' }
 ];
 
 // Cartoes do topo; os botoes de canal ficam sobre o de erros e filtram os quatro.
-export function StatsCards({ stats, selectedChannels, toggleChannel }) {
+export function StatsCards({ stats, selectedChannels, toggleChannel, selected, onSelect }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4,1fr)' }, gap: 2 }}>
-      {STATS.map(({ key, label }) => {
+      {STATS.map(({ key, label, icon: Icon, tint, bg }) => {
         const card = (
-          <Paper sx={{ p: 2.5, height: '100%', boxSizing: 'border-box' }}>
-            <Typography color="text.secondary">{label}</Typography>
-            <Typography variant="h4">{stats?.[key] || 0}</Typography>
+          <Paper
+            role={onSelect ? 'button' : undefined}
+            tabIndex={onSelect ? 0 : undefined}
+            aria-pressed={onSelect ? selected === key : undefined}
+            onClick={onSelect ? () => onSelect(key) : undefined}
+            onKeyDown={onSelect ? e => (e.key === 'Enter' || e.key === ' ') && onSelect(key) : undefined}
+            sx={{
+              p: 2.5,
+              height: '100%',
+              boxSizing: 'border-box',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              cursor: onSelect ? 'pointer' : 'default',
+              borderColor: selected === key ? tint : undefined,
+              boxShadow: selected === key ? `0 0 0 3px ${bg}` : undefined,
+              transition: 'box-shadow .15s ease, transform .15s ease',
+              '&:hover': { boxShadow: `0 8px 20px rgba(16,24,40,.08)`, transform: 'translateY(-1px)' }
+            }}
+          >
+            <Box
+              sx={{
+                width: 46,
+                height: 46,
+                flexShrink: 0,
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: 2.5,
+                color: tint,
+                bgcolor: bg
+              }}
+            >
+              <Icon />
+            </Box>
+            <Box>
+              <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                {label}
+              </Typography>
+              <Typography variant="h4">{stats?.[key] || 0}</Typography>
+            </Box>
           </Paper>
         );
         if (key !== 'errors') return <Box key={key}>{card}</Box>;
@@ -196,14 +240,34 @@ export function Grid({ heads, rows, showHome = false }) {
       <Box sx={{ overflowX: 'auto' }}>
         <Box sx={{ minWidth: heads.length * 140 }}>
           <Box
-            sx={{ display: 'grid', gridTemplateColumns: `repeat(${heads.length},1fr)`, gap: 2, p: 1, fontWeight: 700 }}
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${heads.length},1fr)`,
+              gap: 2,
+              px: 1.5,
+              py: 1,
+              bgcolor: '#f9fafb',
+              borderRadius: '6px',
+              border: '1px solid',
+              borderColor: '#eaecf0'
+            }}
           >
             {heads.map((x, i) => (
               <Button
                 key={x}
                 color="inherit"
                 onClick={() => sort(i)}
-                sx={{ justifyContent: 'flex-start', fontWeight: 700, textTransform: 'none', p: 0 }}
+                sx={{
+                  justifyContent: 'flex-start',
+                  minHeight: 0,
+                  p: 0,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: 'text.secondary',
+                  textTransform: 'uppercase',
+                  letterSpacing: '.05em',
+                  '&:hover': { bgcolor: 'transparent', color: 'text.primary' }
+                }}
               >
                 {x}
                 {order.index === i ? (order.direction === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -217,10 +281,14 @@ export function Grid({ heads, rows, showHome = false }) {
                 display: 'grid',
                 gridTemplateColumns: `repeat(${heads.length},1fr)`,
                 gap: 2,
-                p: 1.5,
+                px: 1.5,
+                py: 1.5,
                 borderTop: '1px solid',
                 borderColor: 'divider',
-                alignItems: 'center'
+                alignItems: 'center',
+                fontSize: 14,
+                transition: 'background-color .12s ease',
+                '&:hover': { bgcolor: '#f3fafb' }
               }}
             >
               {row.map((x, j) => (

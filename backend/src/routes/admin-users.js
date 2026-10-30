@@ -8,7 +8,7 @@ export function registerAdminUserRoutes(app, ctx) {
     res.json(
       db
         .prepare(
-          `SELECT u.id,u.username,u.name,u.role,u.active,u.created_at,group_concat(DISTINCT p.name) products,group_concat(DISTINCT uc.channel) channels FROM app_user u LEFT JOIN user_product up ON up.user_id=u.id LEFT JOIN product p ON p.id=up.product_id LEFT JOIN user_channel uc ON uc.user_id=u.id GROUP BY u.id ORDER BY u.name`
+          `SELECT u.id,u.username,u.name,u.role,u.active,u.created_at,group_concat(DISTINCT p.name) products,group_concat(DISTINCT uc.channel) channels FROM app_user u LEFT JOIN user_product up ON up.user_id=u.id LEFT JOIN product p ON p.id=up.product_id LEFT JOIN user_channel uc ON uc.user_id=u.id WHERE u.hub_role IS NULL GROUP BY u.id ORDER BY u.name`
         )
         .all()
     );

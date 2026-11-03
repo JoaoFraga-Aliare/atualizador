@@ -11,6 +11,11 @@ const children = [
   spawn('npm', ['run', 'dev', '--prefix', 'frontend'], { stdio: 'inherit', shell: true })
 ];
 
+// Com --hub, sobe tambem a API do hub-integracao (porta HUB_API_PORT, padrao 4000).
+if (process.argv.includes('--hub')) {
+  children.push(spawn('npm', ['run', 'dev:api', '--prefix', 'hub-integracao'], { stdio: 'inherit', shell: true }));
+}
+
 let stopping = false;
 function stop(code = 0) {
   if (stopping) return;

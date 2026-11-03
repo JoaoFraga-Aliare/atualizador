@@ -5,6 +5,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:hub": "node scripts/dev.mjs --hub",
     "test": "npm test --prefix backend",
     "build": "npm run build --prefix frontend",
     "lint": "eslint .",

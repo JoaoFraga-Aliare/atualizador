@@ -1,17 +1,23 @@
 {
   "name": "hub",
   "private": true,
-  "workspaces": ["api", "web"],
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "npm-run-all --parallel dev:api dev:web",
-    "dev:api": "npm run dev -w api",
-    "dev:web": "npm run dev -w web",
-    "build": "npm run build -w api && npm run build -w web",
-    "lint": "npm run lint -w api && npm run lint -w web",
-    "test": "npm run test -w api",
-    "migrar": "npm run migrar -w api",
-    "db:up": "docker compose up -d postgres"
+    "gerar": "npm run gerar -w @hub/contracts",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "dev:api": "npm run dev -w @hub/api",
+    "dev:web": "npm run dev -w @hub/web",
+    "migrate": "npm run migrate -w @hub/api",
+    "postman": "tsx scripts/gerar-postman.ts",
+    "diagnostico": "tsx --env-file-if-exists=.env scripts/diagnostico.mts",
+    "consumo": "tsx --env-file-if-exists=.env scripts/consumo.mts"
   },
-  "devDependencies": { "npm-run-all2": "^7.0.1" },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=20"
+  }
 }

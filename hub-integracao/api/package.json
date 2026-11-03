@@ -1,0 +1,35 @@
+{
+  "name": "hub-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../.env src/servidor.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/servidor.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "migrar": "tsx --env-file-if-exists=../.env scripts/migrar.ts",
+    "gerar:espelho": "node scripts/gerar-espelho.mjs",
+    "seed:dev": "tsx --env-file-if-exists=../.env scripts/seed-dev.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.1",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^11.2.1",
+    "argon2": "^0.45.1",
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

@@ -35,6 +35,7 @@ export default function HubLogSettings() {
     [hours, setHours] = useState(''),
     [notify, setNotify] = useState({}),
     [retention, setRetention] = useState({}),
+    [debug, setDebug] = useState(false),
     [olderThan, setOlderThan] = useState('30'),
     [notice, setNotice] = useState(null),
     [busy, setBusy] = useState(false),
@@ -44,6 +45,7 @@ export default function HubLogSettings() {
       setHours(c.personalizado.horasCorpo ? String(c.horasCorpo) : '');
       setNotify(c.notificar);
       setRetention(c.retencao);
+      setDebug(c.gravarSucesso === true);
     }, []),
     load = useCallback(async () => {
       try {
@@ -88,6 +90,13 @@ export default function HubLogSettings() {
       );
       return 'Prazos salvos. A limpeza roda sozinha a cada hora.';
     });
+  const saveDebug = checked =>
+    run(async () => {
+      apply(await api('/admin/hub/logs/config', { method: 'PUT', body: JSON.stringify({ gravarSucesso: checked }) }));
+      return checked
+        ? 'Depuração ligada: as requisições que deram certo também ficam no log. Lembre de desligar.'
+        : 'Depuração desligada: o log guarda só erros e recusas.';
+    });
   const saveNotify = () =>
     run(async () => {
       apply(await api('/admin/hub/logs/config', { method: 'PUT', body: JSON.stringify({ notificar: notify }) }));
@@ -126,6 +135,16 @@ export default function HubLogSettings() {
             </Box>
           ))}
         </Box>
+      </Section>
+
+      <Section
+        title="O que o log guarda"
+        text="O log guarda só as requisições com erro ou recusadas (com o conteúdo, para investigar). As que deram certo viram contadores por hora (conexão, resumo e consumo continuam funcionando) e não ocupam espaço."
+      >
+        <FormControlLabel
+          control={<Checkbox checked={debug} onChange={e => saveDebug(e.target.checked)} disabled={busy} />}
+          label="Depuração: gravar também as requisições que deram certo (enche o banco; use por pouco tempo)"
+        />
       </Section>
 
       <Section

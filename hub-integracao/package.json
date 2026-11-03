@@ -1,0 +1,17 @@
+{
+  "name": "hub",
+  "private": true,
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:api dev:web",
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w api && npm run build -w web",
+    "lint": "npm run lint -w api && npm run lint -w web",
+    "test": "npm run test -w api",
+    "migrar": "npm run migrar -w api",
+    "db:up": "docker compose up -d postgres"
+  },
+  "devDependencies": { "npm-run-all2": "^7.0.1" },
+  "engines": { "node": ">=22" }
+}

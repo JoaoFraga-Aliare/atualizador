@@ -8,9 +8,9 @@ export function createScopeHelpers(db) {
             'SELECT p.* FROM product p JOIN user_product up ON up.product_id=p.id WHERE up.user_id=? ORDER BY p.name'
           )
           .all(req.user.id);
-  const allowedProductCodes = req => allowedProducts(req).map(p => p.code);
-  function canAccessTerminal(req, terminal) {
-    const product = db.prepare('SELECT id FROM product WHERE code=?').get(terminal.product_code);
+  const allowedProductCodes = async req => (await allowedProducts(req)).map(p => p.code);
+  async function canAccessTerminal(req, terminal) {
+    const product = await db.prepare('SELECT id FROM product WHERE code=?').get(terminal.product_code);
     return (
       req.scopes.all ||
       Boolean(product && req.scopes.productIds.includes(product.id) && req.scopes.channels.includes(terminal.channel))

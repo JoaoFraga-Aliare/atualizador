@@ -30,39 +30,39 @@ export function createTerminalKeys(db) {
   );
   const byKeyHash = db.prepare('SELECT id,external_id,api_key_confirmed_at FROM terminal WHERE api_key_hash=?');
 
-  function authenticate(token, terminalId) {
+  async function authenticate(token, terminalId) {
     const identified = normalizeKeyTerminalId(terminalId);
     if (sameSecret(token, process.env.INSTALLATION_KEY)) {
-      const terminal = identified ? byExternalId.get(identified) : null;
+      const terminal = identified ? await byExternalId.get(identified) : null;
       if (terminal?.api_key_confirmed_at && enforced())
         return { ok: false, status: 401, error: 'terminal_key_required' };
       return { ok: true, type: 'global', terminal: terminal || null };
     }
-    const terminal = token ? byKeyHash.get(hashKey(token)) : null;
+    const terminal = token ? await byKeyHash.get(hashKey(token)) : null;
     if (!terminal) return { ok: false, status: 401, error: 'invalid_installation_key' };
     if (identified && identified !== normalizeKeyTerminalId(terminal.external_id))
       return { ok: false, status: 403, error: 'terminal_mismatch' };
     if (!terminal.api_key_confirmed_at)
-      db.prepare('UPDATE terminal SET api_key_confirmed_at=CURRENT_TIMESTAMP WHERE id=?').run(terminal.id);
+      await db.prepare('UPDATE terminal SET api_key_confirmed_at=now() WHERE id=?').run(terminal.id);
     return { ok: true, type: 'terminal', terminal };
   }
 
   // Nova chave a cada consulta ate o terminal confirmar uma delas usando-a.
-  function issueKey(terminalId) {
-    const row = db.prepare('SELECT api_key_confirmed_at FROM terminal WHERE id=?').get(terminalId);
+  async function issueKey(terminalId) {
+    const row = await db.prepare('SELECT api_key_confirmed_at FROM terminal WHERE id=?').get(terminalId);
     if (!row || row.api_key_confirmed_at) return null;
     const key = `tk_${crypto.randomBytes(32).toString('base64url')}`;
-    db.prepare('UPDATE terminal SET api_key_hash=?,api_key_issued_at=CURRENT_TIMESTAMP WHERE id=?').run(
+    await db.prepare('UPDATE terminal SET api_key_hash=?,api_key_issued_at=now() WHERE id=?').run(
       hashKey(key),
       terminalId
     );
     return key;
   }
 
-  function resetKey(terminalId) {
-    db.prepare('UPDATE terminal SET api_key_hash=NULL,api_key_issued_at=NULL,api_key_confirmed_at=NULL WHERE id=?').run(
-      terminalId
-    );
+  async function resetKey(terminalId) {
+    await db
+      .prepare('UPDATE terminal SET api_key_hash=NULL,api_key_issued_at=NULL,api_key_confirmed_at=NULL WHERE id=?')
+      .run(terminalId);
   }
 
   return { authenticate, issueKey, resetKey };

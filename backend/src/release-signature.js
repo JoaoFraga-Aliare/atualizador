@@ -59,14 +59,17 @@ export function verifyReleaseSignature(publicKey, release, signature) {
 }
 
 export function createReleaseSigner(db, key) {
-  const select = db.prepare(
-    'SELECT r.id,r.version,r.channel,r.sha256,r.size_bytes,p.code product FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=?'
-  );
-  const update = db.prepare('UPDATE release SET signature=?,signature_key_id=? WHERE id=?');
-  function signStoredRelease(id) {
-    const row = select.get(id);
+  const select = sql =>
+    sql.prepare(
+      'SELECT r.id,r.version,r.channel,r.sha256,r.size_bytes,p.code product FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=?'
+    );
+  const update = sql => sql.prepare('UPDATE release SET signature=?,signature_key_id=? WHERE id=?');
+  // tdb: quando a publicacao ainda nao foi comitada (dentro de uma transacao em andamento), passe o
+  // db transacional (nao o pool) para que esta leitura/escrita veja a linha ainda nao comitada.
+  async function signStoredRelease(id, tdb = db) {
+    const row = await select(tdb).get(id);
     if (!row) throw new Error('release_not_found');
-    update.run(
+    await update(tdb).run(
       signRelease(key, {
         releaseId: row.id,
         product: row.product,
@@ -80,13 +83,15 @@ export function createReleaseSigner(db, key) {
     );
   }
   // Assina publicacoes antigas e as assinadas com outra chave.
-  function signPendingReleases() {
+  async function signPendingReleases() {
     let signed = 0;
-    for (const { id } of db
-      .prepare("SELECT id FROM release WHERE sha256<>'pending' AND (signature IS NULL OR signature_key_id IS NOT ?)")
+    for (const { id } of await db
+      .prepare(
+        "SELECT id FROM release WHERE sha256<>'pending' AND (signature IS NULL OR signature_key_id IS DISTINCT FROM ?)"
+      )
       .all(key.keyId)) {
       try {
-        signStoredRelease(id);
+        await signStoredRelease(id);
         signed += 1;
       } catch (error) {
         console.error(`Falha ao assinar a publicacao ${id}: ${error.message}`);

@@ -11,37 +11,37 @@ import { decryptStoredError, errorSignature } from '../lib/error-crypto.js';
 // Painel: produtos e publicacoes.
 export function registerAdminReleaseRoutes(app, ctx) {
   const { db, packagesPath, upload, releaseSigner, adminAuth, allowedProducts } = ctx;
-  app.get('/api/v1/admin/products', adminAuth, (req, res) => res.json(allowedProducts(req)));
-  app.post('/api/v1/admin/products', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/products', adminAuth, async (req, res) => res.json(await allowedProducts(req)));
+  app.post('/api/v1/admin/products', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-    const r = db.prepare('INSERT INTO product(code,name) VALUES(?,?)').run(req.body.code, req.body.name);
+    const r = await db.prepare('INSERT INTO product(code,name) VALUES(?,?) RETURNING id').run(req.body.code, req.body.name);
     res.status(201).json({ id: r.lastInsertRowid });
   });
-  app.delete('/api/v1/admin/products/:id', adminAuth, (req, res) => {
+  app.delete('/api/v1/admin/products/:id', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-    const product = db.prepare('SELECT * FROM product WHERE id=?').get(req.params.id);
+    const product = await db.prepare('SELECT * FROM product WHERE id=?').get(req.params.id);
     if (!product) return res.status(404).json({ error: 'product_not_found' });
     if (
-      db.prepare('SELECT 1 FROM release WHERE product_id=? LIMIT 1').get(product.id) ||
-      db.prepare('SELECT 1 FROM terminal WHERE product_code=? LIMIT 1').get(product.code)
+      (await db.prepare('SELECT 1 FROM release WHERE product_id=? LIMIT 1').get(product.id)) ||
+      (await db.prepare('SELECT 1 FROM terminal WHERE product_code=? LIMIT 1').get(product.code))
     )
       return res.status(409).json({ error: 'product_in_use' });
-    db.prepare('DELETE FROM product WHERE id=?').run(product.id);
+    await db.prepare('DELETE FROM product WHERE id=?').run(product.id);
     res.json({ deleted: true });
   });
-  app.get('/api/v1/admin/products/:id/delete-impact', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/products/:id/delete-impact', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-    const product = db.prepare('SELECT * FROM product WHERE id=?').get(req.params.id);
+    const product = await db.prepare('SELECT * FROM product WHERE id=?').get(req.params.id);
     if (!product) return res.status(404).json({ error: 'product_not_found' });
     res.json({
       canDelete:
-        !db.prepare('SELECT 1 FROM release WHERE product_id=? LIMIT 1').get(product.id) &&
-        !db.prepare('SELECT 1 FROM terminal WHERE product_code=? LIMIT 1').get(product.code),
-      releases: db.prepare('SELECT count(*) value FROM release WHERE product_id=?').get(product.id).value,
-      terminals: db.prepare('SELECT count(*) value FROM terminal WHERE product_code=?').get(product.code).value
+        !(await db.prepare('SELECT 1 FROM release WHERE product_id=? LIMIT 1').get(product.id)) &&
+        !(await db.prepare('SELECT 1 FROM terminal WHERE product_code=? LIMIT 1').get(product.code)),
+      releases: (await db.prepare('SELECT count(*) AS value FROM release WHERE product_id=?').get(product.id)).value,
+      terminals: (await db.prepare('SELECT count(*) AS value FROM terminal WHERE product_code=?').get(product.code)).value
     });
   });
-  app.get('/api/v1/admin/releases', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/releases', adminAuth, async (req, res) => {
     const { productId, channel } = req.query;
     let where = [],
       args = [];
@@ -61,45 +61,46 @@ export function registerAdminReleaseRoutes(app, ctx) {
       args.push(channel);
     }
     res.json(
-      db
+      await db
         .prepare(
-          `SELECT r.*,p.name product_name,group_concat(CASE WHEN rt.target_type='all' THEN 'Todos' ELSE c.name END,', ') targets,(SELECT count(*) FROM terminal t WHERE t.product_code=p.code AND t.channel=r.channel AND t.current_version=r.version) terminal_count FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id LEFT JOIN client c ON c.id=rt.client_id ${where.length ? 'WHERE ' + where.join(' AND ') : ''} GROUP BY r.id ORDER BY r.published_at DESC`
+          `SELECT r.*,p.name product_name,string_agg(CASE WHEN rt.target_type='all' THEN 'Todos' ELSE c.name END,', ') targets,(SELECT count(*) FROM terminal t WHERE t.product_code=p.code AND t.channel=r.channel AND t.current_version=r.version) terminal_count FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id LEFT JOIN client c ON c.id=rt.client_id ${where.length ? 'WHERE ' + where.join(' AND ') : ''} GROUP BY r.id,p.id ORDER BY r.published_at DESC`
         )
         .all(...args)
     );
   });
-  app.get('/api/v1/admin/releases/:id/details', adminAuth, (req, res) => {
-    const release = db
+  app.get('/api/v1/admin/releases/:id/details', adminAuth, async (req, res) => {
+    const release = await db
       .prepare(
-        `SELECT r.*,p.name product_name,p.code product_code,u.name published_by_name,group_concat(CASE WHEN rt.target_type='all' THEN 'Todos os clientes' ELSE c.name END,', ') targets FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id LEFT JOIN client c ON c.id=rt.client_id LEFT JOIN app_user u ON u.id=r.published_by WHERE r.id=? GROUP BY r.id`
+        `SELECT r.*,p.name product_name,p.code product_code,u.name published_by_name,string_agg(CASE WHEN rt.target_type='all' THEN 'Todos os clientes' ELSE c.name END,', ') targets FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id LEFT JOIN client c ON c.id=rt.client_id LEFT JOIN app_user u ON u.id=r.published_by WHERE r.id=? GROUP BY r.id,p.id,u.id`
       )
       .get(req.params.id);
     if (!release) return res.status(404).json({ error: 'release_not_found' });
     if (!canAccess(req.scopes, release.product_id, release.channel))
       return res.status(403).json({ error: 'scope_denied' });
-    const successful = "'installed','updated','success'",
-      installations = db
+    const timeZone = process.env.APP_TIME_ZONE || 'America/Sao_Paulo',
+      successful = "'installed','updated','success'",
+      installations = await db
         .prepare(
-          `SELECT date(e.created_at,'localtime') day,c.id client_id,c.name client_name,t.id terminal_id,t.name terminal_name,t.computer_name,e.created_at FROM terminal_event e JOIN terminal t ON t.id=e.terminal_id JOIN client c ON c.id=t.client_id WHERE e.release_id=? AND e.status IN (${successful}) ORDER BY e.created_at DESC`
+          `SELECT (e.created_at AT TIME ZONE ?)::date::text AS day,c.id client_id,c.name client_name,t.id terminal_id,t.name terminal_name,t.computer_name,e.created_at FROM terminal_event e JOIN terminal t ON t.id=e.terminal_id JOIN client c ON c.id=t.client_id WHERE e.release_id=? AND e.status IN (${successful}) ORDER BY e.created_at DESC`
         )
-        .all(release.id),
-      days = db
+        .all(timeZone, release.id),
+      days = await db
         .prepare(
-          `SELECT date(e.created_at,'localtime') day,count(DISTINCT t.client_id) client_count,count(DISTINCT e.terminal_id) terminal_count FROM terminal_event e JOIN terminal t ON t.id=e.terminal_id WHERE e.release_id=? AND e.status IN (${successful}) GROUP BY date(e.created_at,'localtime') ORDER BY day DESC`
+          `SELECT day,count(DISTINCT client_id) client_count,count(DISTINCT terminal_id) terminal_count FROM (SELECT (e.created_at AT TIME ZONE ?)::date::text AS day,t.client_id,e.terminal_id FROM terminal_event e JOIN terminal t ON t.id=e.terminal_id WHERE e.release_id=? AND e.status IN (${successful})) x GROUP BY day ORDER BY day DESC`
         )
-        .all(release.id);
+        .all(timeZone, release.id);
     res.json({
       ...release,
       days,
       installations,
-      analytics: releaseAnalytics(db, release, decryptStoredError, errorSignature)
+      analytics: await releaseAnalytics(db, release, decryptStoredError, errorSignature)
     });
   });
-  app.get('/api/v1/admin/logs', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/logs', adminAuth, async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500),
       ids = req.scopes.productIds;
     res.json(
-      db
+      await db
         .prepare(
           `SELECT e.id,e.status,e.message,e.previous_version,e.target_version,e.ip,e.created_at,t.name terminal_name,t.computer_name,c.name client_name,r.artifact_type,p.name product_name FROM terminal_event e LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id LEFT JOIN release r ON r.id=e.release_id LEFT JOIN product p ON p.id=r.product_id ${req.scopes.all ? '' : `WHERE (r.product_id IN (${ids.map(() => '?').join(',') || 'NULL'}) OR t.product_code IN (SELECT code FROM product WHERE id IN (${ids.map(() => '?').join(',') || 'NULL'})))`} ORDER BY e.created_at DESC,e.id DESC LIMIT ?`
         )
@@ -113,12 +114,12 @@ export function registerAdminReleaseRoutes(app, ctx) {
       { name: 'artifact', maxCount: 1 },
       { name: 'package', maxCount: 1 }
     ]),
-    (req, res, next) => {
+    async (req, res, next) => {
       const file = req.files?.artifact?.[0] || req.files?.package?.[0],
         artifactId = textValue(req.body.artifactId);
       let final,
         ownsFinal = false,
-        inTransaction = false,
+        tdb,
         ciArtifact;
       try {
         const artifactType = req.body.artifactType === 'sql' ? 'sql' : 'package',
@@ -126,7 +127,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
           sqlContent = String(req.body.sqlContent || '').trim();
         if (artifactId) {
           if (artifactType !== 'package' || file) throw new Error('invalid_artifact_selection');
-          ciArtifact = db
+          ciArtifact = await db
             .prepare(
               `SELECT * FROM ci_artifact WHERE id=? ${req.user.role === 'admin' ? '' : 'AND user_id=?'} AND consumed_at IS NULL`
             )
@@ -145,7 +146,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
         )
           throw new Error('sql_required');
         if (!['test', 'beta', 'production'].includes(req.body.channel)) throw new Error('invalid_channel');
-        const product = db.prepare('SELECT * FROM product WHERE id=?').get(req.body.productId);
+        const product = await db.prepare('SELECT * FROM product WHERE id=?').get(req.body.productId);
         if (!product) throw new Error('product_not_found');
         if (!canAccess(req.scopes, product.id, req.body.channel)) {
           if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -169,9 +170,9 @@ export function registerAdminReleaseRoutes(app, ctx) {
           ciArtifact &&
           (ciArtifact.product_code !== product.code ||
             ciArtifact.version !== version ||
-            !db
+            !(await db
               .prepare('SELECT 1 FROM ci_artifact_channel WHERE artifact_id=? AND channel=?')
-              .get(ciArtifact.id, req.body.channel))
+              .get(ciArtifact.id, req.body.channel)))
         )
           throw new Error('artifact_metadata_mismatch');
         const name = `${safe}-${req.body.channel}${expectedExtension}`;
@@ -180,11 +181,11 @@ export function registerAdminReleaseRoutes(app, ctx) {
         ownsFinal = true;
         const originalName =
           artifactType === 'sql' && sqlContent ? name : ciArtifact?.original_name || file.originalname;
-        db.exec('BEGIN IMMEDIATE');
-        inTransaction = true;
-        const result = db
+        tdb = await db.connect();
+        await tdb.exec('BEGIN');
+        const result = await tdb
           .prepare(
-            'INSERT INTO release(product_id,version,channel,file_path,sha256,size_bytes,mandatory,minimum_version,notes,technical_notes,show_notes_pdv,artifact_type,original_name,deadline_at,published_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO release(product_id,version,channel,file_path,sha256,size_bytes,mandatory,minimum_version,notes,technical_notes,show_notes_pdv,artifact_type,original_name,deadline_at,published_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id'
           )
           .run(
             product.id,
@@ -204,7 +205,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
             req.user.id
           );
         const releaseId = result.lastInsertRowid;
-        db.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
+        await tdb.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
           normalizeRolloutPercent(req.body.rolloutPercent),
           releaseId
         );
@@ -218,34 +219,37 @@ export function registerAdminReleaseRoutes(app, ctx) {
             channel: req.body.channel,
             version
           });
-          db.prepare('UPDATE release SET executable_sha256=? WHERE id=?').run(manifest.executableSha256, releaseId);
+          await tdb
+            .prepare('UPDATE release SET executable_sha256=? WHERE id=?')
+            .run(manifest.executableSha256, releaseId);
         } else if (sqlContent) fs.writeFileSync(final, sqlContent + '\n', 'utf8');
         else fs.renameSync(file.path, final);
         const size = fs.statSync(final).size,
           sha = hashFileSync(final);
-        db.prepare('UPDATE release SET sha256=?,size_bytes=? WHERE id=?').run(sha, size, releaseId);
+        await tdb.prepare('UPDATE release SET sha256=?,size_bytes=? WHERE id=?').run(sha, size, releaseId);
         if (req.body.targetType === 'all')
-          db.prepare("INSERT INTO release_target(release_id,target_type) VALUES(?,'all')").run(releaseId);
+          await tdb.prepare("INSERT INTO release_target(release_id,target_type) VALUES(?,'all')").run(releaseId);
         else
           for (const id of ids)
-            db.prepare("INSERT INTO release_target(release_id,target_type,client_id) VALUES(?,'client',?)").run(
-              releaseId,
-              id
-            );
-        db.prepare('INSERT INTO terminal_event(release_id,status,message,ip) VALUES(?,?,?,?)').run(
-          releaseId,
-          'published',
-          `Versão ${version} publicada como ${artifactType === 'sql' ? 'script SQL' : 'pacote de arquivos com manifesto gerado pelo servidor'}, com prazo até ${deadlineAt}.`,
-          req.ip
-        );
-        releaseSigner.signStoredRelease(releaseId);
-        db.exec('COMMIT');
-        inTransaction = false;
-        if (ciArtifact)
-          db.prepare('UPDATE ci_artifact SET consumed_at=CURRENT_TIMESTAMP,release_id=? WHERE id=?').run(
+            await tdb
+              .prepare("INSERT INTO release_target(release_id,target_type,client_id) VALUES(?,'client',?)")
+              .run(releaseId, id);
+        await tdb
+          .prepare('INSERT INTO terminal_event(release_id,status,message,ip) VALUES(?,?,?,?)')
+          .run(
             releaseId,
-            ciArtifact.id
+            'published',
+            `Versão ${version} publicada como ${artifactType === 'sql' ? 'script SQL' : 'pacote de arquivos com manifesto gerado pelo servidor'}, com prazo até ${deadlineAt}.`,
+            req.ip
           );
+        await releaseSigner.signStoredRelease(releaseId, tdb);
+        await tdb.exec('COMMIT');
+        tdb.release();
+        tdb = null;
+        if (ciArtifact)
+          await db
+            .prepare('UPDATE ci_artifact SET consumed_at=now(),release_id=? WHERE id=?')
+            .run(releaseId, ciArtifact.id);
         if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         res.status(201).json({
           id: releaseId,
@@ -255,15 +259,18 @@ export function registerAdminReleaseRoutes(app, ctx) {
           manifestGenerated: artifactType === 'package'
         });
       } catch (e) {
-        if (inTransaction) db.exec('ROLLBACK');
+        if (tdb) {
+          await tdb.exec('ROLLBACK');
+          tdb.release();
+        }
         if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         if (ownsFinal && final && fs.existsSync(final)) fs.unlinkSync(final);
         next(e);
       }
     }
   );
-  app.patch('/api/v1/admin/releases/:id', adminAuth, (req, res) => {
-    const release = db.prepare('SELECT * FROM release WHERE id=?').get(req.params.id);
+  app.patch('/api/v1/admin/releases/:id', adminAuth, async (req, res) => {
+    const release = await db.prepare('SELECT * FROM release WHERE id=?').get(req.params.id);
     if (!release) return res.status(404).json({ error: 'release_not_found' });
     if (!canAccess(req.scopes, release.product_id, release.channel))
       return res.status(403).json({ error: 'scope_denied' });
@@ -275,16 +282,13 @@ export function registerAdminReleaseRoutes(app, ctx) {
     } catch (e) {
       return res.status(400).json({ error: e.message });
     }
-    db.prepare('UPDATE release SET active=?,blocked=?,rollout_percent=? WHERE id=?').run(
-      active,
-      blocked,
-      rolloutPercent,
-      release.id
-    );
+    await db
+      .prepare('UPDATE release SET active=?,blocked=?,rollout_percent=? WHERE id=?')
+      .run(active, blocked, rolloutPercent, release.id);
     res.json({ updated: true, active: Boolean(active), blocked: Boolean(blocked), rolloutPercent });
   });
-  app.delete('/api/v1/admin/releases/:id', adminAuth, (req, res) => {
-    const release = db
+  app.delete('/api/v1/admin/releases/:id', adminAuth, async (req, res) => {
+    const release = await db
       .prepare(
         `SELECT r.*,p.code product_code FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=? AND r.deleted_at IS NULL`
       )
@@ -292,31 +296,37 @@ export function registerAdminReleaseRoutes(app, ctx) {
     if (!release) return res.status(404).json({ error: 'release_not_found' });
     if (!canAccess(req.scopes, release.product_id, release.channel))
       return res.status(403).json({ error: 'scope_denied' });
-    const installations = db
-      .prepare('SELECT count(*) value FROM terminal WHERE product_code=? AND channel=? AND current_version=?')
-      .get(release.product_code, release.channel, release.version).value;
+    const installations = (
+      await db
+        .prepare('SELECT count(*) AS value FROM terminal WHERE product_code=? AND channel=? AND current_version=?')
+        .get(release.product_code, release.channel, release.version)
+    ).value;
     if (installations) return res.status(409).json({ error: 'release_installed', installations });
-    softDeleteRelease(db, release, packagesPath, req.user.id);
+    await softDeleteRelease(db, release, packagesPath, req.user.id);
     res.json({ deleted: true });
   });
-  app.get('/api/v1/admin/releases/:id/delete-impact', adminAuth, (req, res) => {
-    const release = db
+  app.get('/api/v1/admin/releases/:id/delete-impact', adminAuth, async (req, res) => {
+    const release = await db
       .prepare(`SELECT r.*,p.code product_code FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=?`)
       .get(req.params.id);
     if (!release) return res.status(404).json({ error: 'release_not_found' });
     if (!canAccess(req.scopes, release.product_id, release.channel))
       return res.status(403).json({ error: 'scope_denied' });
-    const installations = db
-        .prepare('SELECT count(*) value FROM terminal WHERE product_code=? AND current_version=?')
-        .get(release.product_code, release.version).value,
-      events = db.prepare('SELECT count(*) value FROM terminal_event WHERE release_id=?').get(release.id).value,
-      sharedArtifact = db
-        .prepare('SELECT count(*) value FROM release WHERE file_path=? AND id<>?')
-        .get(release.file_path, release.id).value;
+    const installations = (
+        await db
+          .prepare('SELECT count(*) AS value FROM terminal WHERE product_code=? AND current_version=?')
+          .get(release.product_code, release.version)
+      ).value,
+      events = (
+        await db.prepare('SELECT count(*) AS value FROM terminal_event WHERE release_id=?').get(release.id)
+      ).value,
+      sharedArtifact = (
+        await db.prepare('SELECT count(*) AS value FROM release WHERE file_path=? AND id<>?').get(release.file_path, release.id)
+      ).value;
     res.json({ canDelete: installations === 0, installations, events, sharedArtifact: Boolean(sharedArtifact) });
   });
-  app.post('/api/v1/admin/releases/:id/copy', adminAuth, (req, res, next) => {
-    const source = db
+  app.post('/api/v1/admin/releases/:id/copy', adminAuth, async (req, res, next) => {
+    const source = await db
       .prepare('SELECT r.*,p.code product_code FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=?')
       .get(req.params.id);
     if (!source) return res.status(404).json({ error: 'release_not_found' });
@@ -336,18 +346,18 @@ export function registerAdminReleaseRoutes(app, ctx) {
     const sourceFile = path.resolve(packagesPath, source.file_path),
       final = path.resolve(packagesPath, relativePath);
     let ownsFinal = false,
-      inTransaction = false;
+      tdb;
     try {
       if (!sourceFile.startsWith(packagesPath + path.sep) || !fs.existsSync(sourceFile))
         throw new Error('release_file_not_found');
       if (packageArtifact && fs.existsSync(final)) throw new Error('release_file_already_exists');
       if (packageArtifact) ownsFinal = true;
       const deadlineAt = normalizeFutureDeadline(req.body.deadlineAt);
-      db.exec('BEGIN IMMEDIATE');
-      inTransaction = true;
-      const result = db
+      tdb = await db.connect();
+      await tdb.exec('BEGIN');
+      const result = await tdb
         .prepare(
-          `INSERT INTO release(product_id,version,channel,file_path,sha256,size_bytes,mandatory,minimum_version,notes,technical_notes,show_notes_pdv,artifact_type,original_name,deadline_at,published_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          `INSERT INTO release(product_id,version,channel,file_path,sha256,size_bytes,mandatory,minimum_version,notes,technical_notes,show_notes_pdv,artifact_type,original_name,deadline_at,published_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`
         )
         .run(
           source.product_id,
@@ -367,7 +377,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
           req.user.id
         );
       const id = result.lastInsertRowid;
-      db.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
+      await tdb.prepare('UPDATE release SET rollout_percent=? WHERE id=?').run(
         normalizeRolloutPercent(req.body.rolloutPercent),
         id
       );
@@ -378,27 +388,27 @@ export function registerAdminReleaseRoutes(app, ctx) {
           channel,
           version
         });
-        db.prepare('UPDATE release SET sha256=?,size_bytes=?,executable_sha256=? WHERE id=?').run(
-          hashFileSync(final),
-          fs.statSync(final).size,
-          manifest.executableSha256,
-          id
-        );
+        await tdb
+          .prepare('UPDATE release SET sha256=?,size_bytes=?,executable_sha256=? WHERE id=?')
+          .run(hashFileSync(final), fs.statSync(final).size, manifest.executableSha256, id);
       }
       if (targetType === 'all')
-        db.prepare("INSERT INTO release_target(release_id,target_type) VALUES(?,'all')").run(id);
+        await tdb.prepare("INSERT INTO release_target(release_id,target_type) VALUES(?,'all')").run(id);
       else
         for (const clientId of ids)
-          db.prepare("INSERT INTO release_target(release_id,target_type,client_id) VALUES(?,'client',?)").run(
-            id,
-            clientId
-          );
-      releaseSigner.signStoredRelease(id);
-      db.exec('COMMIT');
-      inTransaction = false;
+          await tdb
+            .prepare("INSERT INTO release_target(release_id,target_type,client_id) VALUES(?,'client',?)")
+            .run(id, clientId);
+      await releaseSigner.signStoredRelease(id, tdb);
+      await tdb.exec('COMMIT');
+      tdb.release();
+      tdb = null;
       res.status(201).json({ id });
     } catch (e) {
-      if (inTransaction) db.exec('ROLLBACK');
+      if (tdb) {
+        await tdb.exec('ROLLBACK');
+        tdb.release();
+      }
       if (ownsFinal && fs.existsSync(final)) fs.unlinkSync(final);
       next(e);
     }

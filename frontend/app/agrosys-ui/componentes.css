@@ -1,0 +1,139 @@
+/* =========================================================
+   Agrosys UI — componentes
+   Requer tokens.css. Todas as classes têm o prefixo "ag-" para
+   não colidir com outros CSS do projeto. A tipografia base só vale
+   dentro de um elemento com a classe "ag" (ex.: <body class="ag">).
+   ========================================================= */
+
+/* ---------- base ---------- */
+.ag, .ag *, .ag *::before, .ag *::after { box-sizing: border-box; }
+.ag { margin: 0; font: var(--ag-fonte-tam)/1.6 var(--ag-fonte); color: var(--ag-texto); background: var(--ag-fundo); }
+/* :where() zera a especificidade: qualquer classe de componente vence a base. */
+:where(.ag) button { font: inherit; cursor: pointer; }
+:where(.ag) a { color: var(--ag-ciano-texto); text-decoration: none; }
+:where(.ag) a:hover { text-decoration: underline; }
+:where(.ag) :is(h1, h2, h3, h4) { color: var(--ag-navy); font-weight: 700; letter-spacing: -.01em; }
+
+/* Rótulo pequeno em ciano acima de títulos, como no site */
+.ag-eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ag-ciano); margin-bottom: 4px; }
+
+/* ---------- estrutura: menu lateral + conteúdo ---------- */
+.ag-app { display: grid; grid-template-columns: var(--ag-menu-largura) minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns .2s ease; }
+.ag-app.ag-mini { grid-template-columns: var(--ag-menu-recolhido) minmax(0, 1fr); }
+.ag-main { min-width: 0; display: flex; flex-direction: column; }
+
+.ag-topo { height: 56px; background: var(--ag-superficie); border-bottom: 1px solid var(--ag-linha); display: flex; align-items: center; gap: 12px; padding: 0 24px; position: sticky; top: 0; z-index: 20; }
+.ag-usuario { margin-left: auto; display: flex; align-items: center; gap: 9px; color: var(--ag-texto-sec); font-size: 13px; }
+.ag-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--ag-ciano); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+.ag-pagina { padding: 26px 30px 70px; max-width: 1240px; width: 100%; }
+.ag-titulo { font-size: 24px; margin: 0 0 4px; }
+.ag-lead { color: var(--ag-texto-sec); margin: 0 0 22px; max-width: 820px; }
+
+/* ---------- menu lateral ---------- */
+.ag-menu { background: var(--ag-navy); color: #cfe3ea; padding: 16px 12px; position: sticky; top: 0; height: 100vh; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid rgba(255, 255, 255, .08); }
+.ag-marca { display: flex; align-items: center; justify-content: center; flex: none; height: 56px; padding: 0 8px 12px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.ag-marca .ag-logo { width: 138px; height: auto; display: block; }
+.ag-marca .ag-logo-marca { width: 30px; height: auto; display: none; }
+.ag-mini .ag-marca .ag-logo { display: none; }
+.ag-mini .ag-marca .ag-logo-marca { display: block; }
+
+.ag-menu-secao { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ag-ciano); padding: 16px 12px 6px; white-space: nowrap; }
+.ag-item { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--ag-raio); color: #d3e6ec; border: 0; background: none; text-align: left; width: 100%; font-weight: 500; white-space: nowrap; flex: none; text-decoration: none; }
+.ag-item:hover { background: rgba(255, 255, 255, .08); color: #fff; text-decoration: none; }
+.ag-item.ag-ativo, .ag-item[aria-current="page"] { background: rgba(255, 255, 255, .11); color: #fff; font-weight: 600; box-shadow: inset 3px 0 0 var(--ag-ciano); }
+.ag-item.ag-ativo .ag-icone, .ag-item[aria-current="page"] .ag-icone { color: var(--ag-ciano); }
+.ag-icone { width: 20px; height: 20px; flex: none; display: grid; place-items: center; }
+.ag-icone svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ag-rotulo { overflow: hidden; text-overflow: ellipsis; }
+
+.ag-menu-rodape { margin-top: auto; padding-top: 10px; }
+.ag-menu-nota { font-size: 11px; color: #9cc0cc; padding: 4px 12px 10px; line-height: 1.5; }
+.ag-recolher { color: #9cc0cc; border-top: 1px solid rgba(255, 255, 255, .12); border-radius: 0 0 var(--ag-raio) var(--ag-raio); padding-top: 12px; }
+.ag-recolher .ag-icone svg { transition: transform .2s ease; }
+
+/* recolhido: só ícones; o nome aparece no hint (menu.js) */
+.ag-mini .ag-menu { padding: 16px 10px; }
+.ag-mini .ag-item { justify-content: center; padding: 10px 0; }
+.ag-mini .ag-rotulo, .ag-mini .ag-menu-nota { display: none; }
+.ag-mini .ag-recolher .ag-icone svg { transform: rotate(180deg); }
+.ag-mini .ag-menu-secao { font-size: 0; padding: 0; margin: 12px 10px 8px; border-top: 1px solid rgba(255, 255, 255, .15); }
+
+.ag-hint { position: fixed; z-index: 300; transform: translateY(-50%); background: var(--ag-navy-escuro); color: #fff; font: 600 12.5px/1.4 var(--ag-fonte); padding: 6px 11px; border-radius: var(--ag-raio-sm); box-shadow: 0 6px 20px rgba(0, 0, 0, .25); pointer-events: none; white-space: nowrap; }
+.ag-hint::before { content: ""; position: absolute; left: -5px; top: 50%; margin-top: -5px; border: 5px solid transparent; border-left: 0; border-right-color: var(--ag-navy-escuro); }
+.ag-hint[hidden] { display: none; }
+
+/* ---------- botões ---------- */
+.ag-btn { border: 1px solid var(--ag-borda-campo); background: var(--ag-superficie); color: var(--ag-navy); border-radius: var(--ag-raio); padding: 8px 14px; font: 600 13px/1.4 var(--ag-fonte); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; text-decoration: none; }
+.ag-btn:hover { background: #f3f9fb; text-decoration: none; }
+.ag-btn-primario { background: var(--ag-ciano); border-color: var(--ag-ciano); color: #fff; }
+.ag-btn-primario:hover { background: var(--ag-ciano-hover); }
+.ag-btn-escuro { background: var(--ag-navy); border-color: var(--ag-navy); color: #fff; }
+.ag-btn-escuro:hover { background: var(--ag-navy-hover); }
+.ag-btn-discreto { border-color: transparent; background: transparent; color: var(--ag-texto-sec); }
+.ag-btn-discreto:hover { background: #eef4f6; }
+.ag-btn-perigo { color: var(--ag-vermelho); border-color: #ecc9c9; }
+.ag-btn-sm { padding: 5px 10px; font-size: 12.5px; }
+.ag-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- cards e indicadores ---------- */
+.ag-card { background: var(--ag-superficie); border: 1px solid var(--ag-linha); border-radius: var(--ag-raio-lg); padding: 18px 20px; box-shadow: var(--ag-sombra); }
+.ag-card > h3 { margin: 0 0 10px; font-size: 15.5px; }
+.ag-kpi-numero { font-size: 28px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; color: var(--ag-navy); }
+.ag-kpi-rotulo { color: var(--ag-texto-sec); font-size: 12.5px; }
+
+.ag-grade { display: grid; gap: 16px; }
+.ag-g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ag-g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ag-g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ag-g-2-1 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } /* conteúdo principal + coluna lateral */
+.ag-rolagem { overflow-x: auto; } /* envolve tabelas largas em telas estreitas */
+.ag-linha-flex { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ag-espaco { flex: 1; }
+
+/* ---------- selos de situação e etiquetas ---------- */
+.ag-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; border-radius: 20px; padding: 2px 9px; white-space: nowrap; background: var(--ag-cinza-fundo); color: var(--ag-cinza); }
+.ag-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ag-chip-sucesso { background: var(--ag-verde-fundo); color: var(--ag-verde); }
+.ag-chip-info { background: var(--ag-azul-fundo); color: var(--ag-azul); }
+.ag-chip-alerta { background: var(--ag-amarelo-fundo); color: var(--ag-amarelo); }
+.ag-chip-erro { background: var(--ag-vermelho-fundo); color: var(--ag-vermelho); }
+.ag-tag { display: inline-block; font-size: 11.5px; border: 1px solid #cfe3ea; background: #f5fbfc; color: #2f6b7d; border-radius: 6px; padding: 1px 7px; margin: 2px 4px 2px 0; }
+
+/* ---------- tabela ---------- */
+.ag-tabela { width: 100%; border-collapse: collapse; background: var(--ag-superficie); }
+.ag-tabela th { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ag-ciano-hover); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--ag-linha); font-weight: 700; }
+.ag-tabela td { padding: 11px 12px; border-bottom: 1px solid #edf2f4; vertical-align: middle; }
+.ag-tabela tr.ag-clicavel { cursor: pointer; }
+.ag-tabela tr.ag-clicavel:hover td { background: #f7fbfc; }
+
+/* ---------- abas ---------- */
+.ag-abas { display: flex; gap: 4px; border-bottom: 1px solid var(--ag-linha); margin-bottom: 18px; flex-wrap: wrap; }
+.ag-abas button { border: 0; background: none; padding: 9px 14px; color: var(--ag-texto-sec); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ag-abas button.ag-ativo, .ag-abas button[aria-selected="true"] { color: var(--ag-navy); border-bottom-color: var(--ag-ciano); }
+
+/* ---------- formulário ---------- */
+.ag-campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.ag-campo label { font-size: 12px; font-weight: 700; color: var(--ag-texto-sec); }
+.ag-campo input, .ag-campo select, .ag-campo textarea { font: inherit; border: 1px solid var(--ag-borda-campo); border-radius: 10px; padding: 8px 10px; background: var(--ag-superficie); color: var(--ag-texto); }
+.ag-campo input:focus, .ag-campo select:focus, .ag-campo textarea:focus { outline: none; border-color: var(--ag-ciano); box-shadow: 0 0 0 3px rgba(0, 183, 206, .18); }
+.ag-campo .ag-ajuda { font-size: 12px; color: var(--ag-texto-fraco); }
+
+/* ---------- avisos, modal e toast ---------- */
+.ag-aviso { border-left: 4px solid var(--ag-ciano); background: var(--ag-ciano-claro); color: #145466; border-radius: 0 var(--ag-raio-sm) var(--ag-raio-sm) 0; padding: 11px 15px; margin: 12px 0; }
+.ag-aviso-alerta { border-color: #e0aa32; background: var(--ag-amarelo-fundo); color: #6d571f; }
+.ag-aviso-sucesso { border-color: #2d9268; background: #eaf7f0; color: #1e5e44; }
+.ag-aviso-erro { border-color: var(--ag-vermelho); background: var(--ag-vermelho-fundo); color: #7a2828; }
+.ag-modal-fundo { position: fixed; inset: 0; background: rgba(10, 42, 58, .5); display: grid; place-items: center; z-index: 150; padding: 20px; }
+.ag-modal { background: var(--ag-superficie); border-radius: 14px; max-width: 620px; width: 100%; max-height: 88vh; overflow: auto; padding: 22px 24px; box-shadow: var(--ag-sombra-alta); }
+.ag-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--ag-navy); color: #fff; padding: 11px 18px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); z-index: 200; font-weight: 600; max-width: 90vw; }
+
+/* ---------- telas menores ---------- */
+@media (max-width: 1100px) { .ag-g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Em telas estreitas o menu.js força o menu recolhido (só ícones) e esconde o botão de recolher. */
+@media (max-width: 780px) {
+  .ag-estreita .ag-recolher { display: none; }
+  .ag-topo { padding: 0 16px; }
+  .ag-usuario > span { display: none; }
+  .ag-g2, .ag-g3, .ag-g4, .ag-g-2-1 { grid-template-columns: minmax(0, 1fr); }
+  .ag-pagina { padding: 20px 16px; }
+}

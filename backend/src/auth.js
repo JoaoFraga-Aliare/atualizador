@@ -30,27 +30,25 @@ export function verifyPassword(password, stored) {
   }
 }
 
-export function ensureInitialAdmin(db, username, password) {
-  if (!username || !password || db.prepare("SELECT 1 FROM app_user WHERE role='admin' LIMIT 1").get()) return;
-  db.prepare("INSERT INTO app_user(username,name,password_hash,role) VALUES(?,?,?,'admin')").run(
+export async function ensureInitialAdmin(db, username, password) {
+  if (!username || !password || (await db.prepare("SELECT 1 FROM app_user WHERE role='admin' LIMIT 1").get())) return;
+  await db.prepare("INSERT INTO app_user(username,name,password_hash,role) VALUES(?,?,?,'admin')").run(
     username,
     'Administrador',
     hashPassword(password)
   );
 }
 
-export function userScopes(db, user) {
+export async function userScopes(db, user) {
   if (user.role === 'admin') return { all: true, productIds: [], channels: CHANNELS };
   return {
     all: false,
-    productIds: db
-      .prepare('SELECT product_id FROM user_product WHERE user_id=?')
-      .all(user.id)
-      .map(x => x.product_id),
-    channels: db
-      .prepare('SELECT channel FROM user_channel WHERE user_id=?')
-      .all(user.id)
-      .map(x => x.channel)
+    productIds: (await db.prepare('SELECT product_id FROM user_product WHERE user_id=?').all(user.id)).map(
+      x => x.product_id
+    ),
+    channels: (await db.prepare('SELECT channel FROM user_channel WHERE user_id=?').all(user.id)).map(
+      x => x.channel
+    )
   };
 }
 

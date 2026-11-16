@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import { syncDebugFromUrl } from '../lib/debug-data';
-import SystemUpdateAltRounded from '@mui/icons-material/SystemUpdateAltRounded';
 export default function Login() {
   const router = useRouter(),
     [user, setUser] = useState('admin'),
@@ -40,25 +39,13 @@ export default function Login() {
         placeItems: 'center',
         px: 2,
         py: 5,
-        background:
-          'radial-gradient(900px 500px at 15% -10%, rgba(23,122,82,.16), transparent 60%), radial-gradient(700px 420px at 100% 110%, rgba(21,112,239,.10), transparent 60%), #f4f6f9'
+        bgcolor: 'background.default'
       }}
     >
       <Box sx={{ width: '100%', maxWidth: 410 }}>
         <Stack alignItems="center" spacing={1.5} sx={{ mb: 3.5 }}>
-          <Box
-            sx={{
-              width: 52,
-              height: 52,
-              display: 'grid',
-              placeItems: 'center',
-              color: '#fff',
-              borderRadius: 3,
-              background: 'linear-gradient(135deg,#34bdcf,#1f8e9d)',
-              boxShadow: '0 8px 20px rgba(52,189,207,.35)'
-            }}
-          >
-            <SystemUpdateAltRounded />
+          <Box sx={{ bgcolor: 'secondary.main', borderRadius: 3, px: 3, py: 2 }}>
+            <Box component="img" src="/logo-agrosys.svg" alt="Agrosys by aliare" sx={{ width: 150, display: 'block' }} />
           </Box>
           <Box textAlign="center">
             <Typography variant="h6" fontSize={20}>
@@ -69,7 +56,7 @@ export default function Login() {
             </Typography>
           </Box>
         </Stack>
-        <Paper sx={{ p: { xs: 3, sm: 4 }, borderRadius: 4, boxShadow: '0 20px 50px rgba(16,24,40,.10)' }}>
+        <Paper sx={{ p: { xs: 3, sm: 4 }, borderRadius: 4, boxShadow: 'var(--ag-sombra-alta)' }}>
           <Stack component="form" onSubmit={submit} spacing={2.25}>
             <Typography variant="h5" fontWeight={700} letterSpacing="-.02em">
               Acessar painel

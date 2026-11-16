@@ -1,6 +1,8 @@
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import { theme } from './theme';
+import './agrosys-ui/tokens.css';
+import './agrosys-ui/componentes.css';
 import './styles.css';
 export const metadata = {
   title: 'Hub Central',
@@ -10,7 +12,7 @@ export const metadata = {
 export default function Layout({ children }) {
   return (
     <html lang="pt-BR">
-      <body>
+      <body className="ag">
         <AppRouterCacheProvider>
           <ThemeProvider theme={theme}>
             <CssBaseline />

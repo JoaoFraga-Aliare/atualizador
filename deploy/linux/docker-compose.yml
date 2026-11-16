@@ -1,0 +1,67 @@
+name: atualizador
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: { context: ../.., dockerfile: deploy/linux/Dockerfile.backend }
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    env_file: .env
+    environment:
+      PORT: 3333
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/atualizador_dev
+      PACKAGES_PATH: /data/packages
+      DATABASE_BACKUPS_PATH: /data/bancos
+      PACKAGE_SIGNING_KEY_PATH: /data/package-signing-key.pem
+      HUB_API_URL: http://hub-api:4000
+      HUB_PUBLIC_URL: ${PUBLIC_URL}/hub-api
+      TRUST_PROXY: 1
+    volumes:
+      - app_data:/data
+
+  hub-api:
+    build: { context: ../.., dockerfile: deploy/linux/Dockerfile.hub-api }
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    env_file: .env
+    environment:
+      HUB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/hub_dev
+      HUB_API_PORT: 4000
+      HUB_TRUST_PROXY: 1
+
+  hub-web:
+    build: { context: ../.., dockerfile: deploy/linux/Dockerfile.hub-web }
+    restart: unless-stopped
+    depends_on: [hub-api]
+    environment:
+      HUB_API_URL: http://hub-api:4000
+      HUB_PUBLIC_URL: ${PUBLIC_URL}/hub-api
+    ports:
+      - '3406:3100'
+
+  nginx:
+    build: { context: ../.., dockerfile: deploy/linux/Dockerfile.nginx }
+    restart: unless-stopped
+    depends_on: [backend, hub-api]
+    ports:
+      - '3405:3405'
+    volumes:
+      - app_data:/data:ro
+
+volumes:
+  postgres_data:
+  app_data:

@@ -56,12 +56,12 @@ export function readArtifactChangelog(file) {
 }
 
 const artifactSelect = `SELECT a.*,p.id product_id,p.name product_name,u.name user_name,u.username,
-  COALESCE((SELECT group_concat(ac.channel) FROM ci_artifact_channel ac WHERE ac.artifact_id=a.id),a.channel) allowed_channels,
+  COALESCE((SELECT string_agg(ac.channel,',') FROM ci_artifact_channel ac WHERE ac.artifact_id=a.id),a.channel) allowed_channels,
   CASE WHEN a.consumed_at IS NULL THEN 'pending' ELSE 'released' END status
   FROM ci_artifact a LEFT JOIN product p ON p.code=a.product_code LEFT JOIN app_user u ON u.id=a.user_id`;
 
-function visibleArtifact(db, req, id, { pending = false } = {}) {
-  const artifact = db
+async function visibleArtifact(db, req, id, { pending = false } = {}) {
+  const artifact = await db
     .prepare(
       `${artifactSelect} WHERE a.id=? ${req.user.role === 'admin' ? '' : 'AND a.user_id=?'} ${pending ? 'AND a.consumed_at IS NULL' : ''}`
     )
@@ -107,18 +107,18 @@ export function mergeAnalysis(packagesPath, artifacts) {
 }
 
 export function registerCiArtifactRoutes(app, { db, adminAuth, packagesPath, incomingPath, hashFileSync }) {
-  app.get('/api/v1/admin/artifacts', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/artifacts', adminAuth, async (req, res) => {
     const where =
       req.user.role === 'admin' ? 'WHERE a.consumed_at IS NULL' : 'WHERE a.user_id=? AND a.consumed_at IS NULL';
     res.json(
-      db
+      await db
         .prepare(`${artifactSelect} ${where} ORDER BY a.created_at DESC`)
         .all(...(req.user.role === 'admin' ? [] : [req.user.id]))
     );
   });
-  app.get('/api/v1/admin/artifacts/:id/files', adminAuth, (req, res, next) => {
+  app.get('/api/v1/admin/artifacts/:id/files', adminAuth, async (req, res, next) => {
     try {
-      const artifact = visibleArtifact(db, req, req.params.id),
+      const artifact = await visibleArtifact(db, req, req.params.id),
         files = [...readArtifactZip(artifactFile(packagesPath, artifact)).values()]
           .map(({ data, ...item }) => item)
           .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -127,39 +127,39 @@ export function registerCiArtifactRoutes(app, { db, adminAuth, packagesPath, inc
       next(e);
     }
   });
-  app.get('/api/v1/admin/artifacts/:id/changelog', adminAuth, (req, res, next) => {
+  app.get('/api/v1/admin/artifacts/:id/changelog', adminAuth, async (req, res, next) => {
     try {
-      const artifact = visibleArtifact(db, req, req.params.id, { pending: true });
+      const artifact = await visibleArtifact(db, req, req.params.id, { pending: true });
       res.json({ changelog: readArtifactChangelog(artifactFile(packagesPath, artifact)) });
     } catch (e) {
       next(e);
     }
   });
-  app.get('/api/v1/admin/artifacts/:id/download', adminAuth, (req, res, next) => {
+  app.get('/api/v1/admin/artifacts/:id/download', adminAuth, async (req, res, next) => {
     try {
-      const artifact = visibleArtifact(db, req, req.params.id),
+      const artifact = await visibleArtifact(db, req, req.params.id),
         file = artifactFile(packagesPath, artifact);
       res.download(file, artifact.original_name);
     } catch (e) {
       next(e);
     }
   });
-  app.delete('/api/v1/admin/artifacts/:id', adminAuth, (req, res, next) => {
+  app.delete('/api/v1/admin/artifacts/:id', adminAuth, async (req, res, next) => {
     try {
-      const artifact = visibleArtifact(db, req, req.params.id),
+      const artifact = await visibleArtifact(db, req, req.params.id),
         file = artifactFile(packagesPath, artifact);
-      db.prepare('DELETE FROM ci_artifact WHERE id=?').run(artifact.id);
+      await db.prepare('DELETE FROM ci_artifact WHERE id=?').run(artifact.id);
       if (fs.existsSync(file)) fs.unlinkSync(file);
       res.json({ deleted: true });
     } catch (e) {
       next(e);
     }
   });
-  app.post('/api/v1/admin/artifacts/merge/preview', adminAuth, (req, res, next) => {
+  app.post('/api/v1/admin/artifacts/merge/preview', adminAuth, async (req, res, next) => {
     try {
       const ids = [...new Set(req.body.artifactIds || [])];
       if (ids.length < 2) throw new Error('artifact_merge_requires_two');
-      const artifacts = ids.map(id => visibleArtifact(db, req, id)),
+      const artifacts = await Promise.all(ids.map(id => visibleArtifact(db, req, id))),
         analysis = mergeAnalysis(packagesPath, artifacts);
       res.json({
         productCode: artifacts[0].product_code,
@@ -172,12 +172,12 @@ export function registerCiArtifactRoutes(app, { db, adminAuth, packagesPath, inc
       next(e);
     }
   });
-  app.post('/api/v1/admin/artifacts/merge', adminAuth, (req, res, next) => {
+  app.post('/api/v1/admin/artifacts/merge', adminAuth, async (req, res, next) => {
     let final;
     try {
       const ids = [...new Set(req.body.artifactIds || [])];
       if (ids.length < 2) throw new Error('artifact_merge_requires_two');
-      const artifacts = ids.map(id => visibleArtifact(db, req, id)),
+      const artifacts = await Promise.all(ids.map(id => visibleArtifact(db, req, id))),
         analysis = mergeAnalysis(packagesPath, artifacts),
         resolutions = req.body.resolutions || {};
       for (const conflict of analysis.conflicts) {
@@ -201,21 +201,23 @@ export function registerCiArtifactRoutes(app, { db, adminAuth, packagesPath, inc
         originalName = `${safe}.zip`,
         sizeBytes = fs.statSync(final).size,
         packageSha = hashFileSync(final);
-      db.prepare(
-        'INSERT INTO ci_artifact(id,user_id,product_code,version,channel,file_path,original_name,sha256,size_bytes) VALUES(?,?,?,?,?,?,?,?,?)'
-      ).run(
-        id,
-        req.user.id,
-        artifacts[0].product_code,
-        version,
-        analysis.allowedChannels.includes(artifacts[0].channel) ? artifacts[0].channel : analysis.allowedChannels[0],
-        relative,
-        originalName,
-        packageSha,
-        sizeBytes
-      );
+      await db
+        .prepare(
+          'INSERT INTO ci_artifact(id,user_id,product_code,version,channel,file_path,original_name,sha256,size_bytes) VALUES(?,?,?,?,?,?,?,?,?)'
+        )
+        .run(
+          id,
+          req.user.id,
+          artifacts[0].product_code,
+          version,
+          analysis.allowedChannels.includes(artifacts[0].channel) ? artifacts[0].channel : analysis.allowedChannels[0],
+          relative,
+          originalName,
+          packageSha,
+          sizeBytes
+        );
       for (const channel of analysis.allowedChannels)
-        db.prepare('INSERT INTO ci_artifact_channel(artifact_id,channel) VALUES(?,?)').run(id, channel);
+        await db.prepare('INSERT INTO ci_artifact_channel(artifact_id,channel) VALUES(?,?)').run(id, channel);
       res.status(201).json({ id, version, sha256: packageSha, sizeBytes, files: analysis.selected.size });
     } catch (e) {
       if (final && fs.existsSync(final)) fs.unlinkSync(final);

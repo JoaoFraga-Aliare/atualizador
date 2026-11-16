@@ -283,6 +283,22 @@ test('corpos abusivos: JSON invalido, grande demais, profundo, nao-objeto e polu
 });
 
 // ---------------------------------------------------------------------------------------------------------
+// Regressao: um campo de texto grande (sem JSON, sem ":"/"=") no corpo de uma rota logada (log.ts: redigir/
+// TEXTO_SEGREDO) nao pode travar o event loop. Antes do limite nos quantificadores, 150 mil caracteres ja
+// deixavam o processo inteiro (todos os tenants) sem responder por mais de 10s; o ataque escala O(n^2).
+test('negacao de servico: campo de texto grande numa rota logada nao trava o Hub (ReDoS na redacao de log)', { skip: pula }, async () => {
+  const t0 = Date.now();
+  const r = await chamar('POST', '/v1/terminals', { nome: 'A'.repeat(500_000), codigo: `dos-${randomUUID()}` }, kA);
+  assert.ok(r.status < 500, `resposta: ${r.status}`);
+  assert.ok(Date.now() - t0 < 3000, `POST com corpo grande demorou ${Date.now() - t0}ms (deveria ser rapido)`);
+  // o servidor continua respondendo logo depois (prova de que o log, que roda apos a resposta, nao bloqueou)
+  const t1 = Date.now();
+  const saude = await chamar('GET', '/v1/me', undefined, tSuper);
+  assert.equal(saude.status, 200);
+  assert.ok(Date.now() - t1 < 1000, `servidor ficou lento apos o corpo grande: ${Date.now() - t1}ms`);
+});
+
+// ---------------------------------------------------------------------------------------------------------
 test('SSRF: webhooks e destinos de rede interna nao sao alcancados', { skip: pula }, async () => {
   delete process.env.HUB_WEBHOOK_REDE_INTERNA;
   const hostis = ['http://169.254.169.254/latest/meta-data/', 'http://127.0.0.1/', 'http://localhost/', 'file:///etc/passwd', 'ftp://example.com/x',

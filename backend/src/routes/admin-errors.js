@@ -8,33 +8,37 @@ import path from 'node:path';
 // Painel: erros de producao e notificacoes.
 export function registerAdminErrorRoutes(app, ctx) {
   const { db, adminAuth, allowedProductCodes, packagesPath } = ctx;
-  app.get('/api/v1/admin/errors/settings', adminAuth, (_req, res) => {
-    const setting = db.prepare('SELECT store_screenshot FROM error_setting WHERE id=1').get();
+  app.get('/api/v1/admin/errors/settings', adminAuth, async (_req, res) => {
+    const setting = await db.prepare('SELECT store_screenshot FROM error_setting WHERE id=1').get();
     res.json({ storeScreenshot: Boolean(setting?.store_screenshot) });
   });
-  app.patch('/api/v1/admin/errors/settings', adminAuth, (req, res) => {
+  app.patch('/api/v1/admin/errors/settings', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-    db.prepare('UPDATE error_setting SET store_screenshot=? WHERE id=1').run(req.body.storeScreenshot ? 1 : 0);
+    await db.prepare('UPDATE error_setting SET store_screenshot=? WHERE id=1').run(req.body.storeScreenshot ? 1 : 0);
     res.json({ updated: true, storeScreenshot: Boolean(req.body.storeScreenshot) });
   });
-  app.get('/api/v1/admin/notification-reads', adminAuth, (req, res) =>
+  app.get('/api/v1/admin/notification-reads', adminAuth, async (req, res) =>
     res.json(
-      db.prepare('SELECT notification_key key,read_at readAt FROM notification_read WHERE user_id=?').all(req.user.id)
+      await db
+        .prepare('SELECT notification_key key,read_at readAt FROM notification_read WHERE user_id=?')
+        .all(req.user.id)
     )
   );
-  app.post('/api/v1/admin/notification-reads', adminAuth, (req, res) => {
+  app.post('/api/v1/admin/notification-reads', adminAuth, async (req, res) => {
     const key = textValue(req.body.key);
     if (!key || key.length > 100) return res.status(400).json({ error: 'invalid_notification_key' });
-    db.prepare(
-      'INSERT INTO notification_read(user_id,notification_key) VALUES(?,?) ON CONFLICT(user_id,notification_key) DO UPDATE SET read_at=CURRENT_TIMESTAMP'
-    ).run(req.user.id, key);
+    await db
+      .prepare(
+        'INSERT INTO notification_read(user_id,notification_key) VALUES(?,?) ON CONFLICT(user_id,notification_key) DO UPDATE SET read_at=now()'
+      )
+      .run(req.user.id, key);
     res.json({ read: true, key });
   });
-  app.get('/api/v1/admin/notifications', adminAuth, (req, res) => {
-    const codes = allowedProductCodes(req),
+  app.get('/api/v1/admin/notifications', adminAuth, async (req, res) => {
+    const codes = await allowedProductCodes(req),
       scoped = !req.scopes.all;
     if (scoped && !codes.length) return res.json({ items: [], count: 0 });
-    const rows = db
+    const rows = await db
         .prepare(
           `SELECT e.*,c.name client_name,t.name registered_terminal_name,t.channel,r.id fixed_release_id,r.version fixed_version,er.signature fixed_signature FROM application_error e JOIN error_rule er ON er.product_code=e.product_code AND er.ignored=0 JOIN release r ON r.id=er.fixed_release_id LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id WHERE e.encrypted_payload IS NOT NULL ${scoped ? `AND e.product_code IN (${codes.map(() => '?').join(',')}) AND t.channel IN (${req.scopes.channels.map(() => '?').join(',') || 'NULL'})` : ''} ORDER BY e.received_at DESC LIMIT 1000`
         )
@@ -76,14 +80,14 @@ export function registerAdminErrorRoutes(app, ctx) {
     }
     res.json({ items, count: items.length });
   });
-  app.get('/api/v1/admin/hash-notifications', adminAuth, (req, res) => {
-    const codes = allowedProductCodes(req),
+  app.get('/api/v1/admin/hash-notifications', adminAuth, async (req, res) => {
+    const codes = await allowedProductCodes(req),
       scoped = !req.scopes.all;
     if (scoped && !codes.length) return res.json({ items: [], count: 0 });
     const scope = scoped
         ? `AND e.product_code IN (${codes.map(() => '?').join(',')}) AND t.channel IN (${req.scopes.channels.map(() => '?').join(',') || 'NULL'})`
         : '',
-      rows = db
+      rows = await db
         .prepare(
           `SELECT e.*,c.name client_name,t.name registered_terminal_name,t.channel,r.version detected_version FROM application_error e LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id LEFT JOIN release r ON r.id=e.detected_release_id WHERE e.executable_hash_status IN ('unauthorized','version_mismatch') ${scope} ORDER BY e.received_at DESC LIMIT 500`
         )
@@ -119,11 +123,11 @@ export function registerAdminErrorRoutes(app, ctx) {
     }
     res.json({ items, count: items.length });
   });
-  app.get('/api/v1/admin/terminals/:id/errors/analysis', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/terminals/:id/errors/analysis', adminAuth, async (req, res) => {
     try {
-      const terminal = db.prepare('SELECT * FROM terminal WHERE id=?').get(req.params.id);
+      const terminal = await db.prepare('SELECT * FROM terminal WHERE id=?').get(req.params.id);
       if (!terminal) return res.status(404).json({ error: 'terminal_not_found' });
-      const productAccess = db.prepare('SELECT id FROM product WHERE code=?').get(terminal.product_code);
+      const productAccess = await db.prepare('SELECT id FROM product WHERE code=?').get(terminal.product_code);
       if (
         !req.scopes.all &&
         (!productAccess ||
@@ -143,7 +147,7 @@ export function registerAdminErrorRoutes(app, ctx) {
         days = Math.floor((end - start) / 86400000) + 1;
       if (days < 1 || days > 90) throw new Error('error_period_must_be_between_1_and_90_days');
       const endExclusive = new Date(end.getTime() + 86400000);
-      const rows = db
+      const rows = await db
           .prepare(
             `SELECT e.*,c.name client_name,t.name registered_terminal_name,t.channel,p.name product_name FROM application_error e JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id LEFT JOIN product p ON p.code=e.product_code WHERE e.terminal_id=? AND e.received_at>=? AND e.received_at<? AND e.encrypted_payload IS NOT NULL ORDER BY e.received_at DESC,e.id DESC`
           )
@@ -197,12 +201,20 @@ export function registerAdminErrorRoutes(app, ctx) {
       const visible =
           req.query.includeIgnored === 'true'
             ? valid
-            : valid.filter(
-                x =>
-                  !db
-                    .prepare('SELECT ignored FROM error_rule WHERE signature=? AND product_code=?')
-                    .get(x.signature, x.productCode)?.ignored
-              ),
+            : (
+                await Promise.all(
+                  valid.map(async x => [
+                    x,
+                    (
+                      await db
+                        .prepare('SELECT ignored FROM error_rule WHERE signature=? AND product_code=?')
+                        .get(x.signature, x.productCode)
+                    )?.ignored
+                  ])
+                )
+              )
+                .filter(([, ignored]) => !ignored)
+                .map(([x]) => x),
         unique = values => [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR')),
         options = {
           exceptions: unique(visible.map(x => x.exception)),
@@ -274,7 +286,7 @@ export function registerAdminErrorRoutes(app, ctx) {
       res.status(400).json({ error: e.message });
     }
   });
-  app.get('/api/v1/admin/errors/analysis', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/errors/analysis', adminAuth, async (req, res) => {
     try {
       const today = new Date(),
         defaultStart = new Date(today.getTime() - 29 * 86400000),
@@ -288,7 +300,7 @@ export function registerAdminErrorRoutes(app, ctx) {
         days = Math.floor((end - start) / 86400000) + 1;
       if (days < 1 || days > 90) throw new Error('error_period_must_be_between_1_and_90_days');
       const endExclusive = new Date(end.getTime() + 86400000),
-        codes = allowedProductCodes(req),
+        codes = await allowedProductCodes(req),
         scoped = !req.scopes.all;
       if (scoped && (!codes.length || !req.scopes.channels.length))
         return res.json({
@@ -302,7 +314,7 @@ export function registerAdminErrorRoutes(app, ctx) {
       const scope = scoped
           ? `AND e.product_code IN (${codes.map(() => '?').join(',')}) AND t.channel IN (${req.scopes.channels.map(() => '?').join(',')})`
           : '',
-        rows = db
+        rows = await db
           .prepare(
             `SELECT e.*,c.name client_name,t.name registered_terminal_name,t.channel,p.name product_name FROM application_error e LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id LEFT JOIN product p ON p.code=e.product_code WHERE e.received_at>=? AND e.received_at<? AND e.encrypted_payload IS NOT NULL ${scope} ORDER BY e.received_at DESC,e.id DESC`
           )
@@ -356,12 +368,20 @@ export function registerAdminErrorRoutes(app, ctx) {
       const visible =
           req.query.includeIgnored === 'true'
             ? valid
-            : valid.filter(
-                x =>
-                  !db
-                    .prepare('SELECT ignored FROM error_rule WHERE signature=? AND product_code=?')
-                    .get(x.signature, x.productCode)?.ignored
-              ),
+            : (
+                await Promise.all(
+                  valid.map(async x => [
+                    x,
+                    (
+                      await db
+                        .prepare('SELECT ignored FROM error_rule WHERE signature=? AND product_code=?')
+                        .get(x.signature, x.productCode)
+                    )?.ignored
+                  ])
+                )
+              )
+                .filter(([, ignored]) => !ignored)
+                .map(([x]) => x),
         unique = values => [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR')),
         options = {
           exceptions: unique(visible.map(x => x.exception)),
@@ -432,25 +452,25 @@ export function registerAdminErrorRoutes(app, ctx) {
       res.status(400).json({ error: e.message });
     }
   });
-  app.get('/api/v1/admin/errors', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/errors', adminAuth, async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500),
-      codes = allowedProductCodes(req),
+      codes = await allowedProductCodes(req),
       scoped = !req.scopes.all;
     if (scoped && (!codes.length || !req.scopes.channels.length)) return res.json([]);
     const where = scoped
       ? `WHERE e.product_code IN (${codes.map(() => '?').join(',')}) AND t.channel IN (${req.scopes.channels.map(() => '?').join(',')})`
       : '';
     res.json(
-      db
+      await db
         .prepare(
           `SELECT e.id,e.product_code,e.received_at,e.screenshot_mime IS NOT NULL has_screenshot,c.name client_name,t.name registered_terminal_name FROM application_error e LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id ${where} ORDER BY e.received_at DESC,e.id DESC LIMIT ?`
         )
         .all(...(scoped ? [...codes, ...req.scopes.channels] : []), limit)
     );
   });
-  app.use('/api/v1/admin/errors/:id', adminAuth, (req, res, next) => {
+  app.use('/api/v1/admin/errors/:id', adminAuth, async (req, res, next) => {
     if (req.scopes.all) return next();
-    const error = db
+    const error = await db
       .prepare(
         `SELECT p.id product_id,t.channel FROM application_error e LEFT JOIN product p ON p.code=e.product_code LEFT JOIN terminal t ON t.id=e.terminal_id WHERE e.id=?`
       )
@@ -460,14 +480,14 @@ export function registerAdminErrorRoutes(app, ctx) {
       return res.status(403).json({ error: 'scope_denied' });
     next();
   });
-  app.get('/api/v1/admin/errors/:id', adminAuth, (req, res) => {
-    const error = db
+  app.get('/api/v1/admin/errors/:id', adminAuth, async (req, res) => {
+    const error = await db
       .prepare(
         `SELECT e.*,c.name client_name,t.external_id terminal_external_id FROM application_error e LEFT JOIN terminal t ON t.id=e.terminal_id LEFT JOIN client c ON c.id=t.client_id WHERE e.id=?`
       )
       .get(req.params.id);
     if (!error) return res.status(404).json({ error: 'error_not_found' });
-    const product = db.prepare('SELECT id FROM product WHERE code=?').get(error.product_code);
+    const product = await db.prepare('SELECT id FROM product WHERE code=?').get(error.product_code);
     if (!req.scopes.all && (!product || !req.scopes.productIds.includes(product.id)))
       return res.status(403).json({ error: 'scope_denied' });
     let decrypted;
@@ -480,27 +500,27 @@ export function registerAdminErrorRoutes(app, ctx) {
       const exception = textValue(payload.exceptionClass || payload.exception),
         message = textValue(payload.message),
         signature = errorSignature(exception, message),
-        rule = db
+        rule = await db
           .prepare(
             `SELECT er.ignored,er.fixed_release_id,r.version fixed_version FROM error_rule er LEFT JOIN release r ON r.id=er.fixed_release_id WHERE er.signature=? AND er.product_code=?`
           )
           .get(signature, error.product_code),
-        releases = db
+        releases = await db
           .prepare(
             `SELECT r.id,r.version,r.channel FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? ORDER BY r.published_at DESC,r.id DESC`
           )
           .all(error.product_code);
       const packageRelease =
           (error.detected_release_id &&
-            db
+            (await db
               .prepare('SELECT file_path FROM release WHERE id=? AND deleted_at IS NULL')
-              .get(error.detected_release_id)) ||
+              .get(error.detected_release_id))) ||
           (payload.version &&
-            db
+            (await db
               .prepare(
                 `SELECT r.file_path FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? AND r.version=? AND r.artifact_type='package' AND r.deleted_at IS NULL ORDER BY r.published_at DESC,r.id DESC`
               )
-              .get(error.product_code, String(payload.version))),
+              .get(error.product_code, String(payload.version)))),
         packageFile = packageRelease ? path.resolve(packagesPath, packageRelease.file_path) : null,
         mapAnalysis = analyzeError({
           payload,
@@ -530,8 +550,8 @@ export function registerAdminErrorRoutes(app, ctx) {
       }
     }
   });
-  app.patch('/api/v1/admin/errors/:id/classification', adminAuth, (req, res) => {
-    const error = db.prepare('SELECT * FROM application_error WHERE id=?').get(req.params.id);
+  app.patch('/api/v1/admin/errors/:id/classification', adminAuth, async (req, res) => {
+    const error = await db.prepare('SELECT * FROM application_error WHERE id=?').get(req.params.id);
     if (!error) return res.status(404).json({ error: 'error_not_found' });
     let decrypted;
     try {
@@ -543,14 +563,16 @@ export function registerAdminErrorRoutes(app, ctx) {
         fixedReleaseId = req.body.fixedReleaseId ? Number(req.body.fixedReleaseId) : null;
       if (
         fixedReleaseId &&
-        !db
+        !(await db
           .prepare(`SELECT 1 FROM release r JOIN product p ON p.id=r.product_id WHERE r.id=? AND p.code=?`)
-          .get(fixedReleaseId, error.product_code)
+          .get(fixedReleaseId, error.product_code))
       )
         return res.status(400).json({ error: 'invalid_fixed_release' });
-      db.prepare(
-        `INSERT INTO error_rule(signature,product_code,ignored,fixed_release_id,created_by) VALUES(?,?,?,?,?) ON CONFLICT(signature,product_code) DO UPDATE SET ignored=excluded.ignored,fixed_release_id=excluded.fixed_release_id,created_by=excluded.created_by,updated_at=CURRENT_TIMESTAMP`
-      ).run(signature, error.product_code, ignored, fixedReleaseId, req.user.id);
+      await db
+        .prepare(
+          `INSERT INTO error_rule(signature,product_code,ignored,fixed_release_id,created_by) VALUES(?,?,?,?,?) ON CONFLICT(signature,product_code) DO UPDATE SET ignored=excluded.ignored,fixed_release_id=excluded.fixed_release_id,created_by=excluded.created_by,updated_at=now()`
+        )
+        .run(signature, error.product_code, ignored, fixedReleaseId, req.user.id);
       res.json({ updated: true, ignored: Boolean(ignored), fixedReleaseId });
     } finally {
       if (decrypted) {
@@ -559,8 +581,8 @@ export function registerAdminErrorRoutes(app, ctx) {
       }
     }
   });
-  app.get('/api/v1/admin/errors/:id/terminal', adminAuth, (req, res) => {
-    const terminal = db
+  app.get('/api/v1/admin/errors/:id/terminal', adminAuth, async (req, res) => {
+    const terminal = await db
       .prepare(
         `SELECT t.*,c.name client_name,c.document client_document FROM application_error e JOIN terminal t ON t.id=e.terminal_id JOIN client c ON c.id=t.client_id WHERE e.id=?`
       )
@@ -568,10 +590,10 @@ export function registerAdminErrorRoutes(app, ctx) {
     if (!terminal) return res.status(404).json({ error: 'terminal_not_found' });
     res.json(publicTerminal(terminal));
   });
-  app.get('/api/v1/admin/errors/:id/screenshot', adminAuth, (req, res) => {
-    const error = db.prepare('SELECT * FROM application_error WHERE id=?').get(req.params.id);
+  app.get('/api/v1/admin/errors/:id/screenshot', adminAuth, async (req, res) => {
+    const error = await db.prepare('SELECT * FROM application_error WHERE id=?').get(req.params.id);
     if (!error) return res.status(404).json({ error: 'error_not_found' });
-    const product = db.prepare('SELECT id FROM product WHERE code=?').get(error.product_code);
+    const product = await db.prepare('SELECT id FROM product WHERE code=?').get(error.product_code);
     if (!req.scopes.all && (!product || !req.scopes.productIds.includes(product.id)))
       return res.status(403).json({ error: 'scope_denied' });
     let decrypted;

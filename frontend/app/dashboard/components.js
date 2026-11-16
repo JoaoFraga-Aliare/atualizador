@@ -29,6 +29,8 @@ import {
 import { allowedChannels, channelColors } from './format';
 
 // Chip com a cor do canal quando o rotulo e test, beta ou production.
+import { ag } from '../agrosys-tokens';
+
 export function Chip(props) {
   const color = channelColors[props.label];
   return <MuiChip {...props} sx={{ ...(color ? { bgcolor: color, color: '#fff' } : {}), ...props.sx }} />;
@@ -103,10 +105,10 @@ export function ConfirmDialog({ value, close }) {
 }
 
 const STATS = [
-  { key: 'clients', label: 'Clientes', icon: BusinessIcon, tint: '#1570ef', bg: '#eff4ff' },
-  { key: 'terminals', label: 'Terminais', icon: DevicesIcon, tint: '#7a5af8', bg: '#f4f3ff' },
-  { key: 'releases', label: 'Versões ativas', icon: RocketLaunchIcon, tint: '#34bdcf', bg: '#e3f6f9' },
-  { key: 'errors', label: 'Erros em 7 dias', icon: ErrorOutlineIcon, tint: '#d92d20', bg: '#fef3f2' }
+  { key: 'clients', label: 'Clientes', icon: BusinessIcon, tint: ag.azul, bg: ag.azulFundo },
+  { key: 'terminals', label: 'Terminais', icon: DevicesIcon, tint: ag.navy, bg: ag.cinzaFundo },
+  { key: 'releases', label: 'Versões ativas', icon: RocketLaunchIcon, tint: ag.cianoTexto, bg: ag.cianoClaro },
+  { key: 'errors', label: 'Erros em 7 dias', icon: ErrorOutlineIcon, tint: ag.vermelho, bg: ag.vermelhoFundo }
 ];
 
 // Cartoes do topo; os botoes de canal ficam sobre o de erros e filtram os quatro.

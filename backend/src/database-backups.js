@@ -19,29 +19,29 @@ export function createDatabaseBackups({ db, packagesPath, databaseBackupsPath })
         }
       : null;
   }
-  function databaseSetting() {
-    const setting = db
+  async function databaseSetting() {
+    const setting = await db
       .prepare(
         'SELECT retention_days retentionDays,retention_count retentionCount FROM terminal_database_setting WHERE id=1'
       )
       .get();
     return { retentionDays: setting?.retentionDays ?? 30, retentionCount: setting?.retentionCount ?? 5 };
   }
-  function refreshLastDatabaseUpload(terminalId) {
-    const last = db
+  async function refreshLastDatabaseUpload(terminalId) {
+    const last = await db
       .prepare('SELECT id FROM terminal_database_upload WHERE terminal_id=? ORDER BY received_at DESC,id DESC LIMIT 1')
       .get(terminalId);
-    db.prepare(
-      'UPDATE terminal_database_request SET last_upload_id=?,updated_at=CURRENT_TIMESTAMP WHERE terminal_id=?'
-    ).run(last?.id || null, terminalId);
+    await db
+      .prepare('UPDATE terminal_database_request SET last_upload_id=?,updated_at=now() WHERE terminal_id=?')
+      .run(last?.id || null, terminalId);
   }
   function databaseBackupFile(upload) {
     const file = path.resolve(databaseBackupsPath, String(upload.file_path || ''));
     return file.startsWith(databaseBackupsPath + path.sep) ? file : null;
   }
-  function migrateLegacyDatabaseBackups() {
+  async function migrateLegacyDatabaseBackups() {
     const legacyRoot = path.join(packagesPath, 'bancos');
-    for (const row of db
+    for (const row of await db
       .prepare("SELECT id,file_path FROM terminal_database_upload WHERE file_path LIKE 'bancos/%'")
       .all()) {
       const relativePath = row.file_path.slice('bancos/'.length),
@@ -53,7 +53,7 @@ export function createDatabaseBackups({ db, packagesPath, databaseBackupsPath })
           fs.mkdirSync(path.dirname(target), { recursive: true });
           moveFile(source, target);
         }
-        db.prepare('UPDATE terminal_database_upload SET file_path=? WHERE id=?').run(relativePath, row.id);
+        await db.prepare('UPDATE terminal_database_upload SET file_path=? WHERE id=?').run(relativePath, row.id);
       } catch (error) {
         console.error(`Falha ao migrar o backup de banco ${row.id}: ${error.message}`);
       }
@@ -73,37 +73,37 @@ export function createDatabaseBackups({ db, packagesPath, databaseBackupsPath })
     if (!listFiles(legacyRoot).length) fs.rmSync(legacyRoot, { recursive: true, force: true });
     else console.error(`Ainda ha arquivos em ${legacyRoot}; remova-os manualmente.`);
   }
-  function removeDatabaseUpload(upload) {
+  async function removeDatabaseUpload(upload) {
     const file = databaseBackupFile(upload);
     if (file && fs.existsSync(file)) fs.unlinkSync(file);
-    db.prepare('DELETE FROM terminal_database_upload WHERE id=?').run(upload.id);
-    refreshLastDatabaseUpload(upload.terminal_id);
+    await db.prepare('DELETE FROM terminal_database_upload WHERE id=?').run(upload.id);
+    await refreshLastDatabaseUpload(upload.terminal_id);
   }
-  function pruneDatabaseUploads(terminalId) {
-    const setting = databaseSetting(),
+  async function pruneDatabaseUploads(terminalId) {
+    const setting = await databaseSetting(),
       args = [terminalId],
       where = ['terminal_id=?'];
     if (setting.retentionDays > 0) {
-      where.push(`received_at < datetime('now',?)`);
-      args.push(`-${setting.retentionDays} days`);
+      where.push(`received_at < now() - (?::int * interval '1 day')`);
+      args.push(setting.retentionDays);
     }
     let rows =
       setting.retentionDays > 0
-        ? db.prepare(`SELECT * FROM terminal_database_upload WHERE ${where.join(' AND ')}`).all(...args)
+        ? await db.prepare(`SELECT * FROM terminal_database_upload WHERE ${where.join(' AND ')}`).all(...args)
         : [];
     if (setting.retentionCount > 0)
       rows.push(
-        ...db
+        ...(await db
           .prepare(
             `SELECT * FROM terminal_database_upload WHERE terminal_id=? AND id NOT IN (SELECT id FROM terminal_database_upload WHERE terminal_id=? ORDER BY received_at DESC,id DESC LIMIT ?)`
           )
-          .all(terminalId, terminalId, setting.retentionCount)
+          .all(terminalId, terminalId, setting.retentionCount))
       );
     const seen = new Set();
     for (const row of rows) {
       if (seen.has(row.id)) continue;
       seen.add(row.id);
-      removeDatabaseUpload(row);
+      await removeDatabaseUpload(row);
     }
   }
   return {

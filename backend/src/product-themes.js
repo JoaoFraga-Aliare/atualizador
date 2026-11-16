@@ -98,14 +98,15 @@ function removeFiles(files, assetsPath) {
 }
 
 export function registerProductThemeRoutes(app, { db, adminAuth, installationAuth, upload, packagesPath }) {
-  app.get('/api/v1/admin/products/:id/themes', adminAuth, (req, res) => {
+  app.get('/api/v1/admin/products/:id/themes', adminAuth, async (req, res) => {
     if (!req.scopes.all && !req.scopes.productIds.includes(Number(req.params.id)))
       return res.status(403).json({ error: 'scope_denied' });
     res.json(
-      db
-        .prepare('SELECT * FROM product_theme WHERE product_id=? ORDER BY theme,is_default DESC,priority DESC,id DESC')
-        .all(req.params.id)
-        .map(row => serialize(req, row))
+      (
+        await db
+          .prepare('SELECT * FROM product_theme WHERE product_id=? ORDER BY theme,is_default DESC,priority DESC,id DESC')
+          .all(req.params.id)
+      ).map(row => serialize(req, row))
     );
   });
   app.post(
@@ -116,10 +117,10 @@ export function registerProductThemeRoutes(app, { db, adminAuth, installationAut
       { name: 'background', maxCount: 1 },
       { name: 'startImages', maxCount: 10 }
     ]),
-    (req, res, next) => {
+    async (req, res, next) => {
       try {
         if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-        const product = db.prepare('SELECT id FROM product WHERE id=?').get(req.params.id),
+        const product = await db.prepare('SELECT id FROM product WHERE id=?').get(req.params.id),
           theme = String(req.body.theme || '').toLowerCase();
         if (!product) return res.status(404).json({ error: 'product_not_found' });
         if (!THEMES.has(theme)) throw new Error('invalid_theme');
@@ -139,15 +140,15 @@ export function registerProductThemeRoutes(app, { db, adminAuth, installationAut
         const logo = saveImage(req.files?.logo?.[0], product.id, theme, packagesPath),
           background = saveImage(req.files?.background?.[0], product.id, theme, packagesPath),
           startImages = (req.files?.startImages || []).map(file => saveImage(file, product.id, theme, packagesPath));
-        const result = db.transaction(() => {
+        const result = await db.transaction(async tdb => {
           if (isDefault)
-            db.prepare('DELETE FROM product_theme WHERE product_id=? AND theme=? AND is_default=1').run(
+            await tdb.prepare('DELETE FROM product_theme WHERE product_id=? AND theme=? AND is_default=1').run(
               product.id,
               theme
             );
-          return db
+          return tdb
             .prepare(
-              'INSERT INTO product_theme(product_id,theme,name,is_default,priority,start_date,end_date,weekdays,specific_dates,settings,logo_path,background_path,start_images) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)'
+              'INSERT INTO product_theme(product_id,theme,name,is_default,priority,start_date,end_date,weekdays,specific_dates,settings,logo_path,background_path,start_images) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id'
             )
             .run(
               product.id,
@@ -173,26 +174,26 @@ export function registerProductThemeRoutes(app, { db, adminAuth, installationAut
       }
     }
   );
-  app.delete('/api/v1/admin/products/:productId/themes/:id', adminAuth, (req, res) => {
+  app.delete('/api/v1/admin/products/:productId/themes/:id', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
-    const row = db
+    const row = await db
       .prepare('SELECT * FROM product_theme WHERE id=? AND product_id=?')
       .get(req.params.id, req.params.productId);
     if (!row) return res.status(404).json({ error: 'theme_not_found' });
-    db.prepare('DELETE FROM product_theme WHERE id=?').run(row.id);
+    await db.prepare('DELETE FROM product_theme WHERE id=?').run(row.id);
     removeFiles([row.logo_path, row.background_path, ...json(row.start_images, [])], packagesPath);
     res.json({ deleted: true });
   });
-  app.get('/api/v1/config/themes/:product/:theme', installationAuth, (req, res) => {
+  app.get('/api/v1/config/themes/:product/:theme', installationAuth, async (req, res) => {
     const theme = String(req.params.theme).toLowerCase(),
-      product = db.prepare('SELECT id FROM product WHERE code=? AND active=1').get(req.params.product);
+      product = await db.prepare('SELECT id FROM product WHERE code=? AND active=1').get(req.params.product);
     if (!product) return res.status(404).json({ error: 'product_not_found' });
     if (!THEMES.has(theme)) return res.status(400).json({ error: 'invalid_theme' });
     if (req.query.date && !/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)))
       return res.status(400).json({ error: 'invalid_date' });
     const requested = req.query.date ? new Date(`${req.query.date}T12:00:00`) : new Date();
     if (Number.isNaN(requested.getTime())) return res.status(400).json({ error: 'invalid_date' });
-    const rows = db
+    const rows = await db
         .prepare(
           'SELECT * FROM product_theme WHERE product_id=? AND theme=? AND active=1 ORDER BY is_default ASC,priority DESC,id DESC'
         )

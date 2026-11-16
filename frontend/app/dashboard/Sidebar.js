@@ -16,6 +16,7 @@ import {
   ReceiptLong as ReceiptLongIcon,
   SystemUpdateAlt as SystemUpdateAltIcon
 } from '@mui/icons-material';
+import { ag } from '../agrosys-tokens';
 
 export const SIDEBAR_WIDTH = 264;
 
@@ -85,14 +86,15 @@ export function viewTitle(view, admin, developer) {
 }
 
 const itemSx = active => ({
-  borderRadius: 2,
+  borderRadius: `${ag.raio}px`,
   mb: 0.25,
   py: 0.9,
-  color: active ? 'primary.dark' : 'text.secondary',
-  bgcolor: active ? 'primary.light' : 'transparent',
-  '& .MuiListItemIcon-root': { color: active ? 'primary.main' : '#98a2b3', minWidth: 38 },
-  '&:hover': { bgcolor: active ? 'primary.light' : '#f2f4f7' },
-  '&.Mui-selected, &.Mui-selected:hover': { bgcolor: 'primary.light' }
+  color: active ? '#fff' : '#d3e6ec',
+  bgcolor: active ? 'rgba(255,255,255,.11)' : 'transparent',
+  boxShadow: active ? `inset 3px 0 0 ${ag.ciano}` : 'none',
+  '& .MuiListItemIcon-root': { color: active ? ag.ciano : 'inherit', minWidth: 38 },
+  '&:hover': { bgcolor: active ? 'rgba(255,255,255,.11)' : 'rgba(255,255,255,.08)', color: '#fff' },
+  '&.Mui-selected, &.Mui-selected:hover': { bgcolor: 'rgba(255,255,255,.11)' }
 });
 
 function Node({ item, depth, view, open, toggle, onSelect }) {
@@ -114,18 +116,18 @@ function Node({ item, depth, view, open, toggle, onSelect }) {
     <Box sx={{ mb: 0.25 }}>
       <ListItemButton sx={itemSx(false)} onClick={() => toggle(item.id)}>
         {Icon && (
-          <ListItemIcon sx={hasActive ? { color: 'primary.main !important' } : undefined}>
+          <ListItemIcon sx={hasActive ? { color: `${ag.ciano} !important` } : undefined}>
             <Icon fontSize="small" />
           </ListItemIcon>
         )}
         <ListItemText
           primary={item.label}
-          primaryTypographyProps={{ ...text, color: hasActive ? 'text.primary' : 'inherit' }}
+          primaryTypographyProps={{ ...text, color: hasActive ? '#fff' : 'inherit' }}
         />
         {open[item.id] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
       </ListItemButton>
       <Collapse in={Boolean(open[item.id])} timeout="auto" unmountOnExit>
-        <List disablePadding sx={{ ml: 2.5, pl: 1, borderLeft: '1px solid #e4e8ee' }}>
+        <List disablePadding sx={{ ml: 2.5, pl: 1, borderLeft: '1px solid rgba(255,255,255,.14)' }}>
           {item.children.map(child => (
             <Node
               key={child.id}
@@ -160,9 +162,19 @@ function Content({ view, admin, developer, onSelect }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#fff' }}>
-      <Box sx={{ px: 2.5, height: 72, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-        <Box component="img" src="/logo.png" alt="Agrosys" sx={{ height: 40, width: 'auto', maxWidth: '100%' }} />
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: ag.navy }}>
+      <Box
+        sx={{
+          mx: 1.5,
+          height: 72,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderBottom: '1px solid rgba(255,255,255,.12)'
+        }}
+      >
+        <Box component="img" src="/logo-agrosys.svg" alt="Agrosys by aliare" sx={{ width: 138, height: 'auto' }} />
       </Box>
       <List sx={{ px: 1.5, py: 1, overflowY: 'auto', flex: 1 }} component="nav" aria-label="Menu principal">
         {items.map(item => (
@@ -179,7 +191,7 @@ export default function Sidebar({ view, admin, developer, onSelect, open, onClos
       variant="temporary"
       open={open}
       onClose={onClose}
-      sx={{ '& .MuiDrawer-paper': { width: SIDEBAR_WIDTH, border: 0, boxShadow: '0 24px 56px rgba(16,24,40,.18)' } }}
+      sx={{ '& .MuiDrawer-paper': { width: SIDEBAR_WIDTH, border: 0, bgcolor: ag.navy, boxShadow: ag.sombraAlta } }}
     >
       <Content view={view} admin={admin} developer={developer} onSelect={onSelect} />
     </Drawer>

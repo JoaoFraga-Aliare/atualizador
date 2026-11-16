@@ -1,0 +1,49 @@
+/* =========================================================
+   Agrosys UI — tokens visuais
+   Base: site oficial da Agrosys (agrosys.com.br).
+   Use as variáveis em vez de cores soltas: trocar um valor aqui
+   atualiza todos os componentes.
+   ========================================================= */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap");
+
+:root {
+  /* Marca */
+  --ag-navy: #003e59;        /* azul-marinho: menu, títulos, botão escuro */
+  --ag-navy-escuro: #00344b; /* hint, hover do azul-marinho */
+  --ag-navy-hover: #00557a;
+  --ag-ciano: #00b7ce;       /* destaque: botão principal, item ativo, rótulos */
+  --ag-ciano-hover: #00a2b7;
+  --ag-ciano-texto: #007d8f; /* ciano escurecido para links sobre fundo branco (contraste) */
+  --ag-ciano-claro: #e6f8fb;
+
+  /* Texto e superfícies */
+  --ag-texto: #2b3f47;
+  --ag-texto-sec: #5a6b72;
+  --ag-texto-fraco: #8a9aa1;
+  --ag-linha: #e3e8ec;
+  --ag-borda-campo: #cfdbe1;
+  --ag-fundo: #f4f6f8;
+  --ag-superficie: #ffffff;
+
+  /* Situações */
+  --ag-verde: #22805a;   --ag-verde-fundo: #e3f6ec;
+  --ag-azul: #0a6f99;    --ag-azul-fundo: #e2f2fb;
+  --ag-cinza: #5b6f7b;   --ag-cinza-fundo: #eef2f4;
+  --ag-amarelo: #8a6a12; --ag-amarelo-fundo: #fff8e6;
+  --ag-vermelho: #b23b3b; --ag-vermelho-fundo: #fdeeee;
+
+  /* Tipografia */
+  --ag-fonte: Poppins, "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --ag-fonte-tam: 13.5px;
+
+  /* Formas */
+  --ag-raio-sm: 8px;
+  --ag-raio: 12px;     /* botões, itens de menu */
+  --ag-raio-lg: 16px;  /* cards */
+  --ag-sombra: 0 2px 12px rgba(0, 62, 89, .04);
+  --ag-sombra-alta: 0 20px 60px rgba(0, 0, 0, .3);
+
+  /* Menu lateral */
+  --ag-menu-largura: 240px;
+  --ag-menu-recolhido: 72px;
+}

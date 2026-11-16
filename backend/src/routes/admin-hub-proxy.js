@@ -57,26 +57,29 @@ export function registerAdminHubProxyRoutes(app, ctx) {
   const isAdmin = req => req.user.role === 'admin';
   const hubUser = (req, res, next) =>
     isAdmin(req) || req.user.hub_role ? next() : res.status(403).json({ error: 'hub_access_required' });
-  const homologated = req =>
+  const homologated = async req =>
     isAdmin(req) ||
     Boolean(
-      db
+      await db
         .prepare("SELECT 1 FROM hub_user_tenant WHERE user_id=? AND kind='homologation' AND approved_at IS NOT NULL")
         .get(req.user.id)
     );
-  const ownsTenant = (req, tenantId) =>
+  const ownsTenant = async (req, tenantId) =>
     isAdmin(req) ||
-    Boolean(db.prepare('SELECT 1 FROM hub_user_tenant WHERE user_id=? AND tenant_id=?').get(req.user.id, tenantId));
+    Boolean(
+      await db.prepare('SELECT 1 FROM hub_user_tenant WHERE user_id=? AND tenant_id=?').get(req.user.id, tenantId)
+    );
 
   // Clientes de homologacao (um por desenvolvedor): tenant_id -> nome do desenvolvedor dono.
-  const homologationOwners = () =>
+  const homologationOwners = async () =>
     new Map(
-      db
-        .prepare(
-          "SELECT h.tenant_id,u.name FROM hub_user_tenant h JOIN app_user u ON u.id=h.user_id WHERE h.kind='homologation'"
-        )
-        .all()
-        .map(r => [r.tenant_id, r.name])
+      (
+        await db
+          .prepare(
+            "SELECT h.tenant_id,u.name FROM hub_user_tenant h JOIN app_user u ON u.id=h.user_id WHERE h.kind='homologation'"
+          )
+          .all()
+      ).map(r => [r.tenant_id, r.name])
     );
 
   const handle = fn => async (req, res, next) => {
@@ -99,12 +102,11 @@ export function registerAdminHubProxyRoutes(app, ctx) {
       const mine = isAdmin(req)
         ? null
         : new Map(
-            db
-              .prepare('SELECT tenant_id,kind FROM hub_user_tenant WHERE user_id=?')
-              .all(req.user.id)
-              .map(r => [r.tenant_id, r.kind])
+            (await db.prepare('SELECT tenant_id,kind FROM hub_user_tenant WHERE user_id=?').all(req.user.id)).map(
+              r => [r.tenant_id, r.kind]
+            )
           );
-      const owners = homologationOwners();
+      const owners = await homologationOwners();
       res.json(
         all
           .filter(t => !mine || mine.has(t.id))
@@ -125,13 +127,12 @@ export function registerAdminHubProxyRoutes(app, ctx) {
     adminAuth,
     hubUser,
     handle(async (req, res) => {
-      if (!homologated(req)) return res.status(403).json({ error: 'homologation_required' });
+      if (!(await homologated(req))) return res.status(403).json({ error: 'homologation_required' });
       const created = await hub.call('/v1/tenants', { method: 'POST', body: req.body });
       if (!isAdmin(req))
-        db.prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'client')").run(
-          req.user.id,
-          created.id
-        );
+        await db
+          .prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'client')")
+          .run(req.user.id, created.id);
       res.status(201).json(created);
     })
   );
@@ -147,23 +148,32 @@ export function registerAdminHubProxyRoutes(app, ctx) {
       const [, pattern, options] = route;
       if (options?.admin && !isAdmin(req)) return res.status(403).json({ error: 'admin_required' });
       const tenantId = options?.open ? null : decodeURIComponent(path.match(pattern)[1]);
-      if (tenantId && !ownsTenant(req, tenantId)) return res.status(403).json({ error: 'tenant_forbidden' });
+      if (tenantId && !(await ownsTenant(req, tenantId))) return res.status(403).json({ error: 'tenant_forbidden' });
       const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
       const hasBody = !['GET', 'DELETE'].includes(req.method);
-      if (req.method === 'DELETE' && /^\/tenants\/[^/]+$/.test(path) && homologationOwners().has(tenantId))
+      if (req.method === 'DELETE' && /^\/tenants\/[^/]+$/.test(path) && (await homologationOwners()).has(tenantId))
         return res.status(409).json({ error: 'homologation_client_protected' });
       let body = hasBody ? (req.body ?? {}) : undefined;
       // Cliente de homologacao so tem terminais de homologacao, qualquer que seja o pedido.
-      if (req.method === 'POST' && /^\/tenants\/[^/]+\/terminals$/.test(path) && homologationOwners().has(tenantId))
+      if (
+        req.method === 'POST' &&
+        /^\/tenants\/[^/]+\/terminals$/.test(path) &&
+        (await homologationOwners()).has(tenantId)
+      )
         body = { ...body, ambiente: 'homologacao' };
       // idem ao editar: terminal de cliente de homologacao nunca vai para producao
-      if (req.method === 'PATCH' && /^\/tenants\/[^/]+\/terminals\/[^/]+$/.test(path) && homologationOwners().has(tenantId) && body?.ambiente)
+      if (
+        req.method === 'PATCH' &&
+        /^\/tenants\/[^/]+\/terminals\/[^/]+$/.test(path) &&
+        (await homologationOwners()).has(tenantId) &&
+        body?.ambiente
+      )
         body = { ...body, ambiente: 'homologacao' };
       const result = await hub.call(`/v1${path}${query}`, { method: req.method, body });
       if (req.method === 'DELETE' && /^\/tenants\/[^/]+$/.test(path))
-        db.prepare('DELETE FROM hub_user_tenant WHERE tenant_id=?').run(tenantId);
+        await db.prepare('DELETE FROM hub_user_tenant WHERE tenant_id=?').run(tenantId);
       if (req.method === 'GET' && /^\/tenants\/[^/]+$/.test(path)) {
-        const owner = homologationOwners().get(tenantId);
+        const owner = (await homologationOwners()).get(tenantId);
         return res.json({ ...result, homologation: owner !== undefined, homologationOwner: owner ?? null });
       }
       res.json(result);

@@ -7,7 +7,8 @@ import morgan from 'morgan';
 import multer from 'multer';
 import swaggerUi from 'swagger-ui-express';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
-import { openDatabase } from './db.js';
+import 'express-async-errors';
+import { openDatabase, migrate } from './db.js';
 import { openApiDocument } from './openapi.js';
 import { ensureInitialAdmin } from './auth.js';
 import { registerCiArtifactRoutes } from './ci-artifacts.js';
@@ -33,11 +34,12 @@ import { registerAdminHubProxyRoutes } from './routes/admin-hub-proxy.js';
 import { createHubClient } from './hub-client.js';
 
 // Monta a API: banco, chave de assinatura, middlewares, rotas e WebSocket.
-export function createApp() {
+export async function createApp() {
   const app = express(),
     port = Number(process.env.PORT || 3333);
-  const db = openDatabase(path.resolve(process.env.DATABASE_PATH || './data/updater.db'));
-  ensureInitialAdmin(db, process.env.ADMIN_USER, process.env.ADMIN_PASSWORD);
+  const db = openDatabase(process.env.DATABASE_URL);
+  await migrate(db);
+  await ensureInitialAdmin(db, process.env.ADMIN_USER, process.env.ADMIN_PASSWORD);
   const signingKey = loadSigningKey(
       path.resolve(process.env.PACKAGE_SIGNING_KEY_PATH || './data/package-signing-key.pem')
     ),
@@ -47,7 +49,7 @@ export function createApp() {
       `Chave de assinatura de pacotes criada (keyId ${signingKey.keyId}). Faca backup do arquivo. Chave publica: ${signingKey.publicKeyBase64}`
     );
   {
-    const signed = releaseSigner.signPendingReleases();
+    const signed = await releaseSigner.signPendingReleases();
     if (signed) console.log(`${signed} publicacao(oes) assinada(s) com a chave ${signingKey.keyId}.`);
   }
   const packagesPath = path.resolve(process.env.PACKAGES_PATH || './packages'),
@@ -63,7 +65,7 @@ export function createApp() {
   const { liveTerminals, sendLiveCommand, saveLiveEvent } = createLive(db);
   const scopes = createScopeHelpers(db);
   const backups = createDatabaseBackups({ db, packagesPath, databaseBackupsPath });
-  backups.migrateLegacyDatabaseBackups();
+  await backups.migrateLegacyDatabaseBackups();
   const terminalKeys = createTerminalKeys(db);
   const sessions = createSessions(db);
   const { adminAuth, installationAuth, ciAuth } = createAuthMiddleware(db, terminalKeys, sessions);

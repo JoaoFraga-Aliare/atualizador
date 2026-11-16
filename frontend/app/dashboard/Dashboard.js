@@ -203,8 +203,7 @@ export default function Dashboard() {
             <IconButton edge="start" aria-label="Abrir menu" onClick={() => setMenuOpen(open => !open)}>
               <MenuIcon />
             </IconButton>
-            <Box component="img" src="/logo.png" alt="Agrosys" sx={{ height: 28, width: 'auto', mr: 0.5 }} />
-            <Typography sx={{ flex: 1, fontWeight: 700, letterSpacing: '-.01em' }}>
+            <Typography sx={{ flex: 1, fontWeight: 600, color: 'secondary.main' }}>
               {viewTitle(view, admin, developer)}
             </Typography>
             <NotificationsBell admin={admin} />

@@ -23,12 +23,12 @@ export function registerAdminHubRoutes(app, ctx) {
   };
 
   // Perfil no Hub do usuario logado: define o menu e o que ele pode fazer.
-  app.get('/api/v1/admin/hub/me', adminAuth, hubUser, (req, res) => {
+  app.get('/api/v1/admin/hub/me', adminAuth, hubUser, async (req, res) => {
     const admin = isAdmin(req);
     const approved = admin
       ? true
       : Boolean(
-          db
+          await db
             .prepare(
               "SELECT 1 FROM hub_user_tenant WHERE user_id=? AND kind='homologation' AND approved_at IS NOT NULL"
             )
@@ -53,17 +53,17 @@ export function registerAdminHubRoutes(app, ctx) {
     handle(async (_req, res) => {
       const [{ tenants }, summary] = await Promise.all([hub.call('/v1/me'), hub.call('/v1/resumo')]);
       const owners = new Map(
-          db
-            .prepare(
-              `SELECT h.tenant_id,h.user_id,u.name,h.kind FROM hub_user_tenant h JOIN app_user u ON u.id=h.user_id`
-            )
-            .all()
-            .map(r => [r.tenant_id, r])
+          (
+            await db
+              .prepare(
+                `SELECT h.tenant_id,h.user_id,u.name,h.kind FROM hub_user_tenant h JOIN app_user u ON u.id=h.user_id`
+              )
+              .all()
+          ).map(r => [r.tenant_id, r])
         ),
-        players = db
-          .prepare('SELECT id,name,active FROM app_user WHERE hub_role IS NOT NULL ORDER BY name')
-          .all()
-          .map(p => ({ id: String(p.id), name: p.name, active: Boolean(p.active), clients: 0, homologation: 0 })),
+        players = (
+          await db.prepare('SELECT id,name,active FROM app_user WHERE hub_role IS NOT NULL ORDER BY name').all()
+        ).map(p => ({ id: String(p.id), name: p.name, active: Boolean(p.active), clients: 0, homologation: 0 })),
         byId = new Map(players.map(p => [p.id, p])),
         agrosys = { id: 'agrosys', name: 'Player Agrosys', active: true, clients: 0, homologation: 0 },
         none = { id: 'none', name: 'Sem player', active: true, clients: 0, homologation: 0 },
@@ -151,13 +151,13 @@ export function registerAdminHubRoutes(app, ctx) {
     res.json(result.data);
   });
 
-  app.get('/api/v1/admin/hub/users', adminAuth, adminOnly, (_req, res) => {
-    const rows = db
+  app.get('/api/v1/admin/hub/users', adminAuth, adminOnly, async (_req, res) => {
+    const rows = await db
       .prepare(
-        `SELECT u.id,u.username,u.name,u.hub_role role,u.active,u.created_at createdAt,
-                h.tenant_id homologationTenantId,h.approved_at approvedAt,h.approved_missing approvedMissing,
-                p.document,p.company,p.contact_name contactName,p.contact_email contactEmail,p.contact_phone contactPhone,
-                (SELECT COUNT(*) FROM hub_user_tenant c WHERE c.user_id=u.id AND c.kind='client') clients
+        `SELECT u.id,u.username,u.name,u.hub_role AS role,u.active,u.created_at AS "createdAt",
+                h.tenant_id AS "homologationTenantId",h.approved_at AS "approvedAt",h.approved_missing AS "approvedMissing",
+                p.document,p.company,p.contact_name AS "contactName",p.contact_email AS "contactEmail",p.contact_phone AS "contactPhone",
+                (SELECT COUNT(*) FROM hub_user_tenant c WHERE c.user_id=u.id AND c.kind='client') AS clients
            FROM app_user u LEFT JOIN hub_user_tenant h ON h.user_id=u.id AND h.kind='homologation'
                 LEFT JOIN hub_user_profile p ON p.user_id=u.id
           WHERE u.hub_role IS NOT NULL ORDER BY u.name`
@@ -191,41 +191,46 @@ export function registerAdminHubRoutes(app, ctx) {
       } catch {
         return res.status(400).json({ error: 'password_too_short' });
       }
-      if (db.prepare('SELECT 1 FROM app_user WHERE username=?').get(username))
+      if (await db.prepare('SELECT 1 FROM app_user WHERE username=?').get(username))
         return res.status(409).json({ error: 'username_taken' });
       const userId = Number(
-        db
-          .prepare(
-            "INSERT INTO app_user(username,name,password_hash,role,hub_role) VALUES(?,?,?,'operator','developer')"
-          )
-          .run(username, name, passwordHash).lastInsertRowid
+        (
+          await db
+            .prepare(
+              "INSERT INTO app_user(username,name,password_hash,role,hub_role) VALUES(?,?,?,'operator','developer') RETURNING id"
+            )
+            .run(username, name, passwordHash)
+        ).lastInsertRowid
       );
       try {
-        db.prepare(
-          'INSERT INTO hub_user_profile(user_id,document,company,contact_name,contact_email,contact_phone) VALUES(?,?,?,?,?,?)'
-        ).run(
-          userId,
-          document || null,
-          company || null,
-          contactName || null,
-          contactEmail || null,
-          contactPhone || null
-        );
+        await db
+          .prepare(
+            'INSERT INTO hub_user_profile(user_id,document,company,contact_name,contact_email,contact_phone) VALUES(?,?,?,?,?,?)'
+          )
+          .run(
+            userId,
+            document || null,
+            company || null,
+            contactName || null,
+            contactEmail || null,
+            contactPhone || null
+          );
         if (tenantId) {
           await hub.call(`/v1/tenants/${encodeURIComponent(tenantId)}`);
-          db.prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'client')").run(userId, tenantId);
+          await db
+            .prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'client')")
+            .run(userId, tenantId);
         } else {
           const tenant = await hub.call('/v1/tenants', {
             method: 'POST',
             body: { nome: company, documento: document, origem: 'api' }
           });
-          db.prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'homologation')").run(
-            userId,
-            tenant.id
-          );
+          await db
+            .prepare("INSERT INTO hub_user_tenant(user_id,tenant_id,kind) VALUES(?,?,'homologation')")
+            .run(userId, tenant.id);
         }
       } catch (e) {
-        db.prepare('DELETE FROM app_user WHERE id=?').run(userId);
+        await db.prepare('DELETE FROM app_user WHERE id=?').run(userId);
         throw e;
       }
       res.status(201).json({ id: userId });
@@ -234,7 +239,7 @@ export function registerAdminHubRoutes(app, ctx) {
 
   // Checklist do que o PDV exige x o que o cliente de homologacao ja tem (criterio para homologar).
   const readiness = async userId => {
-    const link = db
+    const link = await db
       .prepare("SELECT tenant_id FROM hub_user_tenant WHERE user_id=? AND kind='homologation'")
       .get(userId);
     if (!link) return null;
@@ -249,7 +254,7 @@ export function registerAdminHubRoutes(app, ctx) {
       if (isAdmin(req)) return res.json({ applicable: false });
       const result = await readiness(req.user.id);
       if (!result) return res.json({ applicable: false });
-      const row = db
+      const row = await db
         .prepare("SELECT approved_at,approved_missing FROM hub_user_tenant WHERE user_id=? AND kind='homologation'")
         .get(req.user.id);
       res.json({
@@ -266,7 +271,9 @@ export function registerAdminHubRoutes(app, ctx) {
     adminAuth,
     adminOnly,
     handle(async (req, res) => {
-      const user = db.prepare('SELECT id FROM app_user WHERE id=? AND hub_role IS NOT NULL').get(Number(req.params.id));
+      const user = await db
+        .prepare('SELECT id FROM app_user WHERE id=? AND hub_role IS NOT NULL')
+        .get(Number(req.params.id));
       if (!user) return res.status(404).json({ error: 'user_not_found' });
       const result = await readiness(user.id);
       if (!result) return res.status(409).json({ error: 'no_homologation_client' });
@@ -282,7 +289,7 @@ export function registerAdminHubRoutes(app, ctx) {
     adminOnly,
     handle(async (req, res) => {
       const id = Number(req.params.id);
-      const user = db.prepare('SELECT id FROM app_user WHERE id=? AND hub_role IS NOT NULL').get(id);
+      const user = await db.prepare('SELECT id FROM app_user WHERE id=? AND hub_role IS NOT NULL').get(id);
       if (!user) return res.status(404).json({ error: 'user_not_found' });
       let missing = null;
       if (req.body.homologated === true) {
@@ -292,9 +299,9 @@ export function registerAdminHubRoutes(app, ctx) {
         if (missing > 0 && req.body.force !== true)
           return res.status(409).json({ error: 'homologation_incomplete', missing, required: result.obrigatorios });
       }
-      db.transaction(() => {
+      await db.transaction(async tdb => {
         if (typeof req.body.homologated === 'boolean') {
-          const r = db
+          const r = await tdb
             .prepare(
               "UPDATE hub_user_tenant SET approved_at=?,approved_by=?,approved_missing=? WHERE user_id=? AND kind='homologation'"
             )
@@ -307,8 +314,8 @@ export function registerAdminHubRoutes(app, ctx) {
           if (!r.changes) throw Object.assign(new Error('no_homologation_client'), { status: 409 });
         }
         if (typeof req.body.active === 'boolean') {
-          db.prepare('UPDATE app_user SET active=? WHERE id=?').run(req.body.active ? 1 : 0, id);
-          if (!req.body.active) sessions.revokeUser(id);
+          await tdb.prepare('UPDATE app_user SET active=? WHERE id=?').run(req.body.active ? 1 : 0, id);
+          if (!req.body.active) await sessions.revokeUser(id);
         }
       })();
       res.json({ updated: true });

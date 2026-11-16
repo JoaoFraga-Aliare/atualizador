@@ -15,15 +15,17 @@ export function createLive(db) {
     item.ws.send(JSON.stringify({ kind: 'command', command, payload, createdAt: new Date().toISOString() }));
     return true;
   }
-  function saveLiveEvent({ terminalId, type, name, operation, value, ip }) {
+  async function saveLiveEvent({ terminalId, type, name, operation, value, ip }) {
     const key = liveKey(terminalId),
-      terminal = key ? db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(key) : null,
+      terminal = key ? await db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(key) : null,
       safeType = ['text', 'json'].includes(String(type)) ? String(type) : 'text',
       safeName = textValue(name) || 'Evento',
       safeOperation = textValue(operation) || 'geral',
       safeValue = typeof value === 'string' ? value : JSON.stringify(value ?? null);
-    const result = db
-      .prepare('INSERT INTO terminal_live_event(terminal_id,type,name,operation,value_text,ip) VALUES(?,?,?,?,?,?)')
+    const result = await db
+      .prepare(
+        'INSERT INTO terminal_live_event(terminal_id,type,name,operation,value_text,ip) VALUES(?,?,?,?,?,?) RETURNING id'
+      )
       .run(terminal?.id || null, safeType, safeName, safeOperation, safeValue, ip || null);
     return {
       id: Number(result.lastInsertRowid),
@@ -63,7 +65,7 @@ export function attachLiveServer(server, { app, db, terminalKeys, liveTerminals,
     if (!item || item.resetAt <= now) liveAuthFailures.set(ip, { count: 1, resetAt: now + liveAuthWindow });
     else item.count += 1;
   }
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`),
         token = url.searchParams.get('token') || (req.headers.authorization || '').replace(/^Bearer /, ''),
@@ -73,21 +75,21 @@ export function attachLiveServer(server, { app, db, terminalKeys, liveTerminals,
         ws.close(1008, 'too_many_attempts');
         return;
       }
-      const auth = terminalId ? terminalKeys.authenticate(token, terminalId) : { ok: false };
+      const auth = terminalId ? await terminalKeys.authenticate(token, terminalId) : { ok: false };
       if (!auth.ok) {
         const invalidKey = !auth.error || auth.error === 'invalid_installation_key';
         if (invalidKey) registerLiveAuthFailure(ip);
         ws.close(1008, invalidKey ? 'unauthorized' : auth.error);
         return;
       }
-      const terminal = db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId);
+      const terminal = await db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId);
       if (!terminal) {
         ws.close(1008, 'terminal_not_found');
         return;
       }
       liveTerminals.set(terminalId, { ws, terminalId, connectedAt: new Date() });
       ws.send(JSON.stringify({ kind: 'hello', terminalId, connectedAt: new Date().toISOString() }));
-      const requested = db
+      const requested = await db
         .prepare('SELECT requested_at FROM terminal_database_request WHERE terminal_id=?')
         .get(terminal.id);
       if (requested?.requested_at) sendLiveCommand(terminalId, 'request_database_backup', { terminalId });
@@ -102,7 +104,7 @@ export function attachLiveServer(server, { app, db, terminalKeys, liveTerminals,
               operation: message.operation,
               value: message.value,
               ip: req.socket.remoteAddress
-            });
+            }).catch(() => {});
         } catch {}
       });
       ws.on('close', () => {

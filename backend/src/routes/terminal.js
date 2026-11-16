@@ -27,33 +27,37 @@ export function registerTerminalRoutes(app, ctx) {
     saveLiveEvent,
     pruneDatabaseUploads
   } = ctx;
-  function registerInstallation(body) {
+  async function registerInstallation(body) {
     const { client, terminal, product = 'pdv', channel = 'production', currentVersion = '0.0.0' } = body;
     if (!client?.id || !client?.name || !terminal?.id || !terminal?.name) throw new Error('invalid_installation');
-    db.prepare(
-      `INSERT INTO client(external_id,name,document) VALUES(?,?,?) ON CONFLICT(external_id) DO UPDATE SET name=excluded.name,document=excluded.document,last_seen_at=CURRENT_TIMESTAMP`
-    ).run(client.id, client.name, client.document || null);
-    const c = db.prepare('SELECT id FROM client WHERE external_id=?').get(client.id);
-    db.prepare(
-      `INSERT INTO terminal(external_id,client_id,name,computer_name,product_code,channel,current_version,os_version) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(external_id) DO UPDATE SET client_id=excluded.client_id,name=excluded.name,computer_name=excluded.computer_name,product_code=excluded.product_code,channel=excluded.channel,current_version=excluded.current_version,os_version=excluded.os_version,last_seen_at=CURRENT_TIMESTAMP`
-    ).run(
-      terminal.id,
-      c.id,
-      terminal.name,
-      terminal.computerName || null,
-      product,
-      channel,
-      currentVersion,
-      terminal.osVersion || null
-    );
-    return { client: c, terminal: db.prepare('SELECT * FROM terminal WHERE external_id=?').get(terminal.id) };
+    await db
+      .prepare(
+        `INSERT INTO client(external_id,name,document) VALUES(?,?,?) ON CONFLICT(external_id) DO UPDATE SET name=excluded.name,document=excluded.document,last_seen_at=now()`
+      )
+      .run(client.id, client.name, client.document || null);
+    const c = await db.prepare('SELECT id FROM client WHERE external_id=?').get(client.id);
+    await db
+      .prepare(
+        `INSERT INTO terminal(external_id,client_id,name,computer_name,product_code,channel,current_version,os_version) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(external_id) DO UPDATE SET client_id=excluded.client_id,name=excluded.name,computer_name=excluded.computer_name,product_code=excluded.product_code,channel=excluded.channel,current_version=excluded.current_version,os_version=excluded.os_version,last_seen_at=now()`
+      )
+      .run(
+        terminal.id,
+        c.id,
+        terminal.name,
+        terminal.computerName || null,
+        product,
+        channel,
+        currentVersion,
+        terminal.osVersion || null
+      );
+    return { client: c, terminal: await db.prepare('SELECT * FROM terminal WHERE external_id=?').get(terminal.id) };
   }
   // 503 quando o banco nao responde ou falta espaco para pacotes e backups (HEALTH_MIN_FREE_MB).
-  app.get('/health', (_q, res) => {
+  app.get('/health', async (_q, res) => {
     const minFree = Number(process.env.HEALTH_MIN_FREE_MB ?? 1024) * 1024 * 1024,
       checks = {};
     try {
-      db.prepare('SELECT 1').get();
+      await db.prepare('SELECT 1').get();
       checks.database = 'ok';
     } catch (e) {
       checks.database = e.message;
@@ -79,7 +83,7 @@ export function registerTerminalRoutes(app, ctx) {
       publicKeyPem: signingKey.publicKeyPem
     })
   );
-  app.post('/api/v1/versions/resolve-hash', installationAuth, (req, res) => {
+  app.post('/api/v1/versions/resolve-hash', installationAuth, async (req, res) => {
     const executableHash = textValue(req.body?.executableHash)?.toLowerCase(),
       product = textValue(req.body?.product) || 'pdv',
       channel = textValue(req.body?.channel);
@@ -89,7 +93,7 @@ export function registerTerminalRoutes(app, ctx) {
     const args = [product, executableHash],
       channelFilter = channel ? 'AND r.channel=?' : '';
     if (channel) args.push(channel);
-    const release = db
+    const release = await db
       .prepare(
         `SELECT r.id,r.version,r.channel,r.technical_notes,r.published_at,p.code product FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? AND lower(r.executable_sha256)=? ${channelFilter} ORDER BY r.published_at DESC,r.id DESC LIMIT 1`
       )
@@ -105,22 +109,23 @@ export function registerTerminalRoutes(app, ctx) {
       publishedAt: release.published_at
     });
   });
-  app.post('/api/v1/updates/check', installationAuth, (req, res) => {
+  app.post('/api/v1/updates/check', installationAuth, async (req, res) => {
     try {
-      const reg = registerInstallation(req.body),
-        terminalKey = req.installation?.type === 'global' ? terminalKeys.issueKey(reg.terminal.id) : null,
+      const reg = await registerInstallation(req.body),
+        terminalKey = req.installation?.type === 'global' ? await terminalKeys.issueKey(reg.terminal.id) : null,
         { product = 'pdv', channel = 'production', currentVersion = '0.0.0' } = req.body,
         currentExecutableHash = textValue(req.body.currentExecutableHash)?.toLowerCase() || null;
       if (currentExecutableHash && !/^[a-f0-9]{64}$/.test(currentExecutableHash))
         throw new Error('invalid_current_executable_sha256');
-      const releases = db
-        .prepare(
-          `SELECT DISTINCT r.* FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id WHERE p.code=? AND r.channel=? AND r.active=1 AND r.blocked=0 AND (rt.target_type='all' OR (rt.target_type='client' AND rt.client_id=?)) ORDER BY r.published_at DESC,r.id DESC`
-        )
-        .all(product, channel, reg.client.id)
-        .filter(r => inRollout(r, reg.terminal.external_id));
+      const releases = (
+        await db
+          .prepare(
+            `SELECT DISTINCT r.* FROM release r JOIN product p ON p.id=r.product_id JOIN release_target rt ON rt.release_id=r.id WHERE p.code=? AND r.channel=? AND r.active=1 AND r.blocked=0 AND (rt.target_type='all' OR (rt.target_type='client' AND rt.client_id=?)) ORDER BY r.published_at DESC,r.id DESC`
+          )
+          .all(product, channel, reg.client.id)
+      ).filter(r => inRollout(r, reg.terminal.external_id));
       const currentRelease = currentExecutableHash
-          ? db
+          ? await db
               .prepare(
                 `SELECT r.* FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? AND r.channel=? AND r.version=? AND lower(r.executable_sha256)=? ORDER BY r.published_at DESC,r.id DESC LIMIT 1`
               )
@@ -147,14 +152,16 @@ export function registerTerminalRoutes(app, ctx) {
             : 'Terminal já está atualizado.';
       // Sem hash o estado anterior e preservado; com hash fica authorized ou outdated.
       if (currentExecutableHash)
-        db.prepare('UPDATE terminal SET executable_sha256=?,executable_status=? WHERE id=?').run(
+        await db.prepare('UPDATE terminal SET executable_sha256=?,executable_status=? WHERE id=?').run(
           currentExecutableHash,
           currentAuthorized ? 'authorized' : 'outdated',
           reg.terminal.id
         );
-      db.prepare(
-        'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
-      ).run(reg.terminal.id, release?.id || null, currentVersion, release?.version || null, status, message, req.ip);
+      await db
+        .prepare(
+          'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
+        )
+        .run(reg.terminal.id, release?.id || null, currentVersion, release?.version || null, status, message, req.ip);
       // terminalKey so aparece enquanto o terminal nao confirmou a chave; deve ser guardada e usada no lugar da global.
       const keyField = terminalKey ? { terminalKey } : {};
       if (!release) return res.json({ available: false, currentVersion, currentAuthorized, message, ...keyField });
@@ -186,7 +193,7 @@ export function registerTerminalRoutes(app, ctx) {
       res.status(400).json({ error: e.message });
     }
   });
-  app.post('/api/v1/updates/events', installationAuth, (req, res) => {
+  app.post('/api/v1/updates/events', installationAuth, async (req, res) => {
     const body = req.body || {},
       status = textValue(body.status);
     if (typeof body.terminalId !== 'string' || !body.terminalId.trim())
@@ -198,31 +205,33 @@ export function registerTerminalRoutes(app, ctx) {
         return res.status(400).json({ error: `invalid_${field}` });
     if (body.message != null && typeof body.message !== 'string')
       return res.status(400).json({ error: 'invalid_message' });
-    const t = db.prepare('SELECT id FROM terminal WHERE external_id=?').get(body.terminalId);
+    const t = await db.prepare('SELECT id FROM terminal WHERE external_id=?').get(body.terminalId);
     if (!t) return res.status(404).json({ error: 'terminal_not_found' });
     const release = req.body.targetVersion
-      ? db
+      ? await db
           .prepare(
             `SELECT r.id FROM release r JOIN product p ON p.id=r.product_id WHERE r.version=? AND p.code=? ORDER BY r.id DESC LIMIT 1`
           )
           .get(req.body.targetVersion, req.body.product || 'pdv')
       : null;
-    db.prepare(
-      'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
-    ).run(
-      t.id,
-      release?.id || null,
-      body.previousVersion || null,
-      body.targetVersion || null,
-      status,
-      textValue(body.message)?.slice(0, 4000) || null,
-      req.ip
-    );
+    await db
+      .prepare(
+        'INSERT INTO terminal_event(terminal_id,release_id,previous_version,target_version,status,message,ip) VALUES(?,?,?,?,?,?,?)'
+      )
+      .run(
+        t.id,
+        release?.id || null,
+        body.previousVersion || null,
+        body.targetVersion || null,
+        status,
+        textValue(body.message)?.slice(0, 4000) || null,
+        req.ip
+      );
     res.status(202).json({ accepted: true });
   });
-  app.post('/api/v1/live/events', installationAuth, (req, res) => {
+  app.post('/api/v1/live/events', installationAuth, async (req, res) => {
     try {
-      const event = saveLiveEvent({
+      const event = await saveLiveEvent({
         terminalId: req.body.terminalId,
         type: req.body.type,
         name: req.body.name,
@@ -235,7 +244,7 @@ export function registerTerminalRoutes(app, ctx) {
       res.status(400).json({ error: e.message });
     }
   });
-  app.post('/api/v1/errors', installationAuth, (req, res) => {
+  app.post('/api/v1/errors', installationAuth, async (req, res) => {
     let decrypted;
     try {
       const body = req.body || {},
@@ -247,7 +256,7 @@ export function registerTerminalRoutes(app, ctx) {
         message = textValue(diagnostic.message);
       if (!exceptionClass) throw new Error('exception_required');
       if (!message) throw new Error('message_required');
-      const terminal = db
+      const terminal = await db
           .prepare('SELECT id,product_code,channel FROM terminal WHERE lower(trim(external_id))=?')
           .get(terminalId),
         product = terminal?.product_code || textValue(body.product) || 'pdv',
@@ -257,7 +266,7 @@ export function registerTerminalRoutes(app, ctx) {
           )?.toLowerCase() || null;
       if (reportedHash && !/^[a-f0-9]{64}$/.test(reportedHash)) throw new Error('invalid_executable_sha256');
       const detected = reportedHash
-          ? db
+          ? await db
               .prepare(
                 `SELECT r.id,r.version,r.channel FROM release r JOIN product p ON p.id=r.product_id WHERE p.code=? AND lower(r.executable_sha256)=? ORDER BY (r.channel=?) DESC,r.published_at DESC,r.id DESC LIMIT 1`
               )
@@ -271,7 +280,7 @@ export function registerTerminalRoutes(app, ctx) {
             : declaredVersion === detected.version
               ? 'authorized'
               : 'version_mismatch',
-        setting = db.prepare('SELECT store_screenshot FROM error_setting WHERE id=1').get(),
+        setting = await db.prepare('SELECT store_screenshot FROM error_setting WHERE id=1').get(),
         rawScreenshot = diagnostic.screenshotBase64 ?? diagnostic.base64 ?? diagnostic.print,
         screenshot = setting?.store_screenshot ? normalizeScreenshot(rawScreenshot) : null;
       if (reportedHash) {
@@ -284,9 +293,9 @@ export function registerTerminalRoutes(app, ctx) {
       delete diagnostic.base64;
       delete diagnostic.print;
       const encrypted = encryptErrorPayload(terminalId, diagnostic),
-        result = db
+        result = await db
           .prepare(
-            'INSERT INTO application_error(terminal_id,product_code,occurred_at,exception_class,message,screenshot_mime,ip,key_terminal_id,crypto_salt,crypto_iv,crypto_auth_tag,encrypted_payload,reported_executable_sha256,detected_release_id,executable_hash_status) VALUES(?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO application_error(terminal_id,product_code,occurred_at,exception_class,message,screenshot_mime,ip,key_terminal_id,crypto_salt,crypto_iv,crypto_auth_tag,encrypted_payload,reported_executable_sha256,detected_release_id,executable_hash_status) VALUES(?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id'
           )
           .run(
             terminal?.id || null,
@@ -323,33 +332,33 @@ export function registerTerminalRoutes(app, ctx) {
       }
     }
   });
-  app.get('/api/v1/database/request', installationAuth, (req, res) => {
+  app.get('/api/v1/database/request', installationAuth, async (req, res) => {
     const terminalId = normalizeKeyTerminalId(req.query.terminalId || req.query.terminal || req.query.id),
       terminal = terminalId
-        ? db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId)
+        ? await db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId)
         : null;
     if (!terminal) return res.status(404).json({ error: 'terminal_not_found' });
-    let state = db
+    let state = await db
       .prepare('SELECT requested_at,last_upload_id FROM terminal_database_request WHERE terminal_id=?')
       .get(terminal.id);
     if (!state) {
-      db.prepare('INSERT INTO terminal_database_request(terminal_id) VALUES(?)').run(terminal.id);
-      state = db
+      await db.prepare('INSERT INTO terminal_database_request(terminal_id) VALUES(?)').run(terminal.id);
+      state = await db
         .prepare('SELECT requested_at,last_upload_id FROM terminal_database_request WHERE terminal_id=?')
         .get(terminal.id);
     }
     res.json({ requested: Boolean(state.requested_at), terminalId, lastUploadId: state.last_upload_id || null });
   });
-  app.post('/api/v1/database/upload', installationAuth, upload.single('database'), (req, res, next) => {
+  app.post('/api/v1/database/upload', installationAuth, upload.single('database'), async (req, res, next) => {
     const file = req.file;
     let storedPath;
     try {
       const terminalId = normalizeKeyTerminalId(req.body.terminalId || req.query.terminalId),
         terminal = terminalId
-          ? db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId)
+          ? await db.prepare('SELECT id FROM terminal WHERE lower(trim(external_id))=?').get(terminalId)
           : null;
       if (!terminal) throw new Error('terminal_not_found');
-      const auth = terminalKeys.authenticate(bearerToken(req), terminalId);
+      const auth = await terminalKeys.authenticate(bearerToken(req), terminalId);
       if (!auth.ok) {
         if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
         return res.status(auth.status).json({ error: auth.error });
@@ -363,18 +372,20 @@ export function registerTerminalRoutes(app, ctx) {
       const sha256 = hashFileSync(storedPath),
         sizeBytes = fs.statSync(storedPath).size,
         relativePath = path.relative(databaseBackupsPath, storedPath).replace(/\\/g, '/'),
-        uploadId = db.transaction(() => {
-          const result = db
+        uploadId = await db.transaction(async tdb => {
+          const result = await tdb
             .prepare(
-              'INSERT INTO terminal_database_upload(terminal_id,file_path,original_name,sha256,size_bytes,ip) VALUES(?,?,?,?,?,?)'
+              'INSERT INTO terminal_database_upload(terminal_id,file_path,original_name,sha256,size_bytes,ip) VALUES(?,?,?,?,?,?) RETURNING id'
             )
             .run(terminal.id, relativePath, file.originalname, sha256, sizeBytes, req.ip);
-          db.prepare(
-            `INSERT INTO terminal_database_request(terminal_id,requested_at,last_upload_id,updated_at) VALUES(?,NULL,?,CURRENT_TIMESTAMP) ON CONFLICT(terminal_id) DO UPDATE SET requested_at=NULL,last_upload_id=excluded.last_upload_id,updated_at=CURRENT_TIMESTAMP`
-          ).run(terminal.id, result.lastInsertRowid);
+          await tdb
+            .prepare(
+              `INSERT INTO terminal_database_request(terminal_id,requested_at,last_upload_id,updated_at) VALUES(?,NULL,?,now()) ON CONFLICT(terminal_id) DO UPDATE SET requested_at=NULL,last_upload_id=excluded.last_upload_id,updated_at=now()`
+            )
+            .run(terminal.id, result.lastInsertRowid);
           return result.lastInsertRowid;
         })();
-      pruneDatabaseUploads(terminal.id);
+      await pruneDatabaseUploads(terminal.id);
       res.status(201).json({ accepted: true, id: Number(uploadId), sha256, sizeBytes });
     } catch (e) {
       if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);

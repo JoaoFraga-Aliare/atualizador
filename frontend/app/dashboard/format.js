@@ -16,7 +16,7 @@ export function storeAllowedChannels(me) {
 
 export const channels = { map: callback => allowedChannels().map(callback) };
 
-export const channelColors = { production: '#2e7d32', beta: '#1976d2', test: '#7b1fa2' };
+export const channelColors = { production: '#22805a', beta: '#0a6f99', test: '#5b6f7b' };
 
 export const fmt = v => (v ? new Date(v.includes('T') ? v : v.replace(' ', 'T') + 'Z').toLocaleString('pt-BR') : '-');
 

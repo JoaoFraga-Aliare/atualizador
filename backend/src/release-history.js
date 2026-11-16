@@ -23,7 +23,7 @@ function scopedReleases(db, req) {
     .prepare(
       `SELECT r.*,p.code product_code,p.name product_name,u.name published_by_name FROM release r JOIN product p ON p.id=r.product_id LEFT JOIN app_user u ON u.id=r.published_by WHERE ${where.join(' AND ')}`
     )
-    .all(...args);
+    .all(...args); // Promise<Array>
 }
 
 function existingSize(packagesPath, relative) {
@@ -32,8 +32,8 @@ function existingSize(packagesPath, relative) {
   return file.startsWith(packagesPath + path.sep) && fs.existsSync(file) ? fs.statSync(file).size : 0;
 }
 
-export function cleanupCandidates(db, req, packagesPath) {
-  const releases = scopedReleases(db, req),
+export async function cleanupCandidates(db, req, packagesPath) {
+  const releases = await scopedReleases(db, req),
     groups = new Map();
   for (const release of releases) {
     const key = `${release.product_id}:${release.channel}`,
@@ -44,26 +44,31 @@ export function cleanupCandidates(db, req, packagesPath) {
   const candidates = [];
   for (const list of groups.values()) {
     const sample = list[0],
-      versions = db
-        .prepare(
-          "SELECT DISTINCT current_version FROM terminal WHERE product_code=? AND channel=? AND trim(current_version)<>''"
-        )
-        .all(sample.product_code, sample.channel)
-        .map(x => x.current_version);
+      versions = (
+        await db
+          .prepare(
+            "SELECT DISTINCT current_version FROM terminal WHERE product_code=? AND channel=? AND trim(current_version)<>''"
+          )
+          .all(sample.product_code, sample.channel)
+      ).map(x => x.current_version);
     if (!versions.length) continue;
     const latest = versions.sort(compareVersions).at(-1);
     for (const release of list) {
       if (compareVersions(release.version, latest) >= 0) continue;
-      const terminals = db
-        .prepare('SELECT count(*) value FROM terminal WHERE product_code=? AND channel=? AND current_version=?')
-        .get(release.product_code, release.channel, release.version).value;
-      if (terminals) continue;
-      const last = db
-          .prepare(
-            `SELECT max(created_at) value FROM terminal_event WHERE release_id=? AND status IN (${successful.map(() => '?').join(',')})`
-          )
-          .get(release.id, ...successful).value,
-        artifact = db.prepare('SELECT file_path FROM ci_artifact WHERE release_id=?').get(release.id),
+      const terminals = (
+        await db
+          .prepare('SELECT count(*) AS value FROM terminal WHERE product_code=? AND channel=? AND current_version=?')
+          .get(release.product_code, release.channel, release.version)
+      ).value;
+      if (Number(terminals)) continue;
+      const last = (
+          await db
+            .prepare(
+              `SELECT max(created_at) AS value FROM terminal_event WHERE release_id=? AND status IN (${successful.map(() => '?').join(',')})`
+            )
+            .get(release.id, ...successful)
+        ).value,
+        artifact = await db.prepare('SELECT file_path FROM ci_artifact WHERE release_id=?').get(release.id),
         reclaimBytes = existingSize(packagesPath, release.file_path) + existingSize(packagesPath, artifact?.file_path);
       candidates.push({ ...release, latest_version: latest, last_update_at: last, reclaim_bytes: reclaimBytes });
     }
@@ -76,19 +81,19 @@ export function cleanupCandidates(db, req, packagesPath) {
   );
 }
 
-export function softDeleteRelease(db, release, packagesPath, userId) {
+export async function softDeleteRelease(db, release, packagesPath, userId) {
   const remove = relative => {
     if (!relative) return;
     const file = path.resolve(packagesPath, relative);
     if (file.startsWith(packagesPath + path.sep) && fs.existsSync(file)) fs.unlinkSync(file);
   };
-  const artifacts = db.prepare('SELECT file_path FROM ci_artifact WHERE release_id=?').all(release.id);
-  db.transaction(() => {
-    db.prepare('UPDATE release SET active=0,blocked=1,deleted_at=CURRENT_TIMESTAMP,deleted_by=? WHERE id=?').run(
+  const artifacts = await db.prepare('SELECT file_path FROM ci_artifact WHERE release_id=?').all(release.id);
+  await db.transaction(async tdb => {
+    await tdb.prepare('UPDATE release SET active=0,blocked=1,deleted_at=now(),deleted_by=? WHERE id=?').run(
       userId,
       release.id
     );
-    db.prepare('INSERT INTO terminal_event(release_id,status,message) VALUES(?,?,?)').run(
+    await tdb.prepare('INSERT INTO terminal_event(release_id,status,message) VALUES(?,?,?)').run(
       release.id,
       'deleted',
       'Versão excluída e arquivo removido para liberação de espaço.'
@@ -98,13 +103,13 @@ export function softDeleteRelease(db, release, packagesPath, userId) {
   for (const artifact of artifacts) remove(artifact.file_path);
 }
 
-export function releaseAnalytics(db, release, decryptStoredError, errorSignature) {
-  const installed = db
+export async function releaseAnalytics(db, release, decryptStoredError, errorSignature) {
+  const installed = await db
       .prepare(
-        `SELECT count(DISTINCT terminal_id) value,min(created_at) first_at,max(created_at) last_at FROM terminal_event WHERE release_id=? AND terminal_id IS NOT NULL AND status IN (${successful.map(() => '?').join(',')})`
+        `SELECT count(DISTINCT terminal_id) AS value,min(created_at) first_at,max(created_at) last_at FROM terminal_event WHERE release_id=? AND terminal_id IS NOT NULL AND status IN (${successful.map(() => '?').join(',')})`
       )
       .get(release.id, ...successful),
-    errors = db
+    errors = await db
       .prepare(
         'SELECT * FROM application_error WHERE detected_release_id=? AND encrypted_payload IS NOT NULL ORDER BY received_at'
       )
@@ -135,19 +140,20 @@ export function releaseAnalytics(db, release, decryptStoredError, errorSignature
       }
     }
   }
-  const installDays = db
+  const timeZone = process.env.APP_TIME_ZONE || 'America/Sao_Paulo',
+    installDays = await db
       .prepare(
-        `SELECT date(created_at,'localtime') day,count(DISTINCT terminal_id) terminals FROM terminal_event WHERE release_id=? AND terminal_id IS NOT NULL AND status IN (${successful.map(() => '?').join(',')}) GROUP BY date(created_at,'localtime')`
+        `SELECT day,count(DISTINCT terminal_id) terminals FROM (SELECT (created_at AT TIME ZONE ?)::date::text AS day,terminal_id FROM terminal_event WHERE release_id=? AND terminal_id IS NOT NULL AND status IN (${successful.map(() => '?').join(',')})) x GROUP BY day`
       )
-      .all(release.id, ...successful),
-    days = new Map(installDays.map(x => [x.day, { date: x.day, terminals: x.terminals, errors: 0 }]));
+      .all(timeZone, release.id, ...successful),
+    days = new Map(installDays.map(x => [x.day, { date: x.day, terminals: Number(x.terminals), errors: 0 }]));
   for (const [date, count] of errorDays) {
     const day = days.get(date) || { date, terminals: 0, errors: 0 };
     day.errors = count;
     days.set(date, day);
   }
-  const end = release.deleted_at ? new Date(release.deleted_at.replace(' ', 'T') + 'Z') : new Date(),
-    start = new Date(release.published_at.replace(' ', 'T') + 'Z'),
+  const end = release.deleted_at ? new Date(release.deleted_at) : new Date(),
+    start = new Date(release.published_at),
     activeDays = Math.max(1, Math.ceil((end - start) / 86400000));
   return {
     activeDays,
@@ -162,19 +168,19 @@ export function releaseAnalytics(db, release, decryptStoredError, errorSignature
 }
 
 export function registerReleaseCleanupRoutes(app, { db, adminAuth, packagesPath }) {
-  app.get('/api/v1/admin/release-cleanup', adminAuth, (req, res) => {
-    const candidates = cleanupCandidates(db, req, packagesPath),
+  app.get('/api/v1/admin/release-cleanup', adminAuth, async (req, res) => {
+    const candidates = await cleanupCandidates(db, req, packagesPath),
       sizeBytes = candidates.reduce((sum, x) => sum + x.reclaim_bytes, 0),
       date = localDay();
     res.json({ key: `release_cleanup:${date}`, date, count: candidates.length, sizeBytes, candidates });
   });
-  app.post('/api/v1/admin/release-cleanup/delete', adminAuth, (req, res, next) => {
+  app.post('/api/v1/admin/release-cleanup/delete', adminAuth, async (req, res, next) => {
     try {
       const selected = new Set((req.body.ids || []).map(Number)),
-        allowed = new Map(cleanupCandidates(db, req, packagesPath).map(x => [x.id, x])),
+        allowed = new Map((await cleanupCandidates(db, req, packagesPath)).map(x => [x.id, x])),
         items = [...selected].map(id => allowed.get(id));
       if (!items.length || items.some(x => !x)) throw new Error('invalid_cleanup_selection');
-      for (const release of items) softDeleteRelease(db, release, packagesPath, req.user.id);
+      for (const release of items) await softDeleteRelease(db, release, packagesPath, req.user.id);
       res.json({ deleted: items.length, reclaimedBytes: items.reduce((sum, x) => sum + x.reclaim_bytes, 0) });
     } catch (e) {
       next(e);

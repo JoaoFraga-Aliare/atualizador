@@ -16,7 +16,11 @@ const MAX_MENSAGEM = 500;
 
 // ---- redacao de segredos ------------------------------------------------------------------
 const CHAVE_SEGREDO = /(senha|password|passwd|secret|token|authorization|pfx|segredo)/i;
-const TEXTO_SEGREDO = /("?[\w-]*(?:senha|password|passwd|token)[\w-]*"?\s*[:=]\s*)("(?:[^"\\]|\\.)*"|[^\s,;&}\]]+)/gi;
+// Quantificadores limitados (nao "*"/"+" livres antes de uma alternativa) para nao abrir uma negacao de servico:
+// um campo de texto grande sem separador ":"/"=" faz ("?[\w-]*...)" tentar casar e retroceder em CADA posicao da
+// string, o que e O(n^2) sem o limite (ex.: 150 mil caracteres ja trava o processo por mais de 10s). Nomes de campo
+// e valores de segredo reais nunca passam de poucas dezenas/milhares de caracteres, entao o limite nao perde nada.
+const TEXTO_SEGREDO = /("?[\w-]{0,40}(?:senha|password|passwd|token)[\w-]{0,40}"?\s*[:=]\s*)("(?:[^"\\]|\\.){0,2000}"|[^\s,;&}\]]{1,2000})/gi;
 
 export function redigir(valor: unknown, profundidade = 0): unknown {
   if (profundidade > 12) return '[profundo]';

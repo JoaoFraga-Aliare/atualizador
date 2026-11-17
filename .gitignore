@@ -7,7 +7,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 node_modules/
-packages/
+/packages/
 delphi/Win32/
 delphi/Win64/
 *.local

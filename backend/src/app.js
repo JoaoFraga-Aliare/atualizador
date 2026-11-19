@@ -53,7 +53,7 @@ export async function createApp() {
     if (signed) console.log(`${signed} publicacao(oes) assinada(s) com a chave ${signingKey.keyId}.`);
   }
   const packagesPath = path.resolve(process.env.PACKAGES_PATH || './packages'),
-    downloadBase = String(process.env.DOWNLOAD_BASE_URL || '').replace(/\/$/, '');
+    downloadBase = String(process.env.DOWNLOAD_BASE_URL || '/downloads').replace(/\/$/, '');
   const incomingPath = path.join(packagesPath, '.incoming');
   fs.mkdirSync(packagesPath, { recursive: true });
   fs.mkdirSync(path.join(packagesPath, '.temp'), { recursive: true });

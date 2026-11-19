@@ -4,4 +4,6 @@ COPY hub-integracao/ ./
 RUN npm ci
 ENV NODE_ENV=production
 EXPOSE 4000
-CMD ["sh", "-c", "npm run migrate -w @hub/api && npm run start -w @hub/api"]
+# Cria o administrador do Hub (idempotente) se HUB_ADMIN_EMAIL estiver no .env; sem administrador o
+# Atualizador recebe 401 do Hub ("Nao ha administrador do Hub para a chave de servico").
+CMD ["sh", "-c", "npm run migrate -w @hub/api && { [ -z \"$HUB_ADMIN_EMAIL\" ] || npm run seed -w @hub/api; } && npm run start -w @hub/api"]

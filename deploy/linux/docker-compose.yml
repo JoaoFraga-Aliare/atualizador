@@ -1,9 +1,15 @@
 name: atualizador
 
+# Limita o log de cada container (sem isso o json-file cresce sem limite).
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '10m', max-file: '3' }
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
@@ -19,6 +25,7 @@ services:
   backend:
     build: { context: ../.., dockerfile: deploy/linux/Dockerfile.backend }
     restart: unless-stopped
+    logging: *logging
     depends_on: { postgres: { condition: service_healthy } }
     env_file: .env
     environment:
@@ -30,12 +37,14 @@ services:
       HUB_API_URL: http://hub-api:4000
       HUB_PUBLIC_URL: ${PUBLIC_URL}/hub-api
       TRUST_PROXY: 1
+      DOWNLOAD_BASE_URL: ${PUBLIC_URL}/downloads
     volumes:
       - app_data:/data
 
   hub-api:
     build: { context: ../.., dockerfile: deploy/linux/Dockerfile.hub-api }
     restart: unless-stopped
+    logging: *logging
     depends_on: { postgres: { condition: service_healthy } }
     env_file: .env
     environment:
@@ -46,6 +55,7 @@ services:
   hub-web:
     build: { context: ../.., dockerfile: deploy/linux/Dockerfile.hub-web }
     restart: unless-stopped
+    logging: *logging
     depends_on: [hub-api]
     environment:
       HUB_API_URL: http://hub-api:4000
@@ -56,6 +66,7 @@ services:
   nginx:
     build: { context: ../.., dockerfile: deploy/linux/Dockerfile.nginx }
     restart: unless-stopped
+    logging: *logging
     depends_on: [backend, hub-api]
     ports:
       - '3405:3405'

@@ -37,9 +37,9 @@
   --ag-fonte-tam: 13.5px;
 
   /* Formas */
-  --ag-raio-sm: 8px;
-  --ag-raio: 12px;     /* botões, itens de menu */
-  --ag-raio-lg: 16px;  /* cards */
+  --ag-raio-sm: 4px;
+  --ag-raio: 6px;      /* botões, itens de menu, campos */
+  --ag-raio-lg: 8px;   /* cards, modais */
   --ag-sombra: 0 2px 12px rgba(0, 62, 89, .04);
   --ag-sombra-alta: 0 20px 60px rgba(0, 0, 0, .3);
 

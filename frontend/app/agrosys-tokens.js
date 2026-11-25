@@ -26,9 +26,9 @@ export const ag = {
   vermelho: '#b23b3b',
   vermelhoFundo: '#fdeeee',
   fonte: 'Poppins, "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  raioSm: 8,
-  raio: 12,
-  raioLg: 16,
+  raioSm: 4,
+  raio: 6,
+  raioLg: 8,
   sombra: '0 2px 12px rgba(0, 62, 89, .04)',
   sombraAlta: '0 20px 60px rgba(0, 0, 0, .3)'
 };

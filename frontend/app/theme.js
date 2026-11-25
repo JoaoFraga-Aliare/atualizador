@@ -15,7 +15,8 @@ export const theme = createTheme({
     warning: { main: ag.amarelo, light: ag.amareloFundo },
     info: { main: ag.azul, light: ag.azulFundo }
   },
-  shape: { borderRadius: ag.raio },
+  // Base 4: o MUI multiplica (borderRadius: 2 => 8px), entao os cantos ficam discretos.
+  shape: { borderRadius: ag.raioSm },
   typography: {
     fontFamily: ag.fonte,
     fontSize: 13.5,
@@ -80,7 +81,7 @@ export const theme = createTheme({
     },
     MuiChip: {
       styleOverrides: {
-        root: { height: 24, borderRadius: 999, fontWeight: 600, backgroundColor: ag.cinzaFundo, color: ag.cinza }
+        root: { height: 24, borderRadius: ag.raioSm, fontWeight: 600, backgroundColor: ag.cinzaFundo, color: ag.cinza }
       }
     },
     MuiDialog: { styleOverrides: { paper: { borderRadius: ag.raioLg, boxShadow: ag.sombraAlta } } },

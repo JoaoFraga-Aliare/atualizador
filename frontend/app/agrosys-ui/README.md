@@ -48,7 +48,7 @@ Coloque a classe `ag` no `<body>` (ela ativa a fonte e as cores base) e monte a 
 
 - **Cores:** azul-marinho `#003E59` no menu, nos títulos e no botão escuro; ciano `#00B7CE` no botão principal, no item ativo e nos rótulos de seção. Para links sobre fundo branco, use `--ag-ciano-texto` (`#007D8F`), porque o ciano puro tem pouco contraste com o branco.
 - **Fonte:** Poppins, com títulos em negrito (700) e texto em 400. Sem internet, a fonte cai para Segoe UI.
-- **Formas:** cantos de 12px em botões e itens de menu, de 16px em cards, e sombra leve.
+- **Formas:** cantos de 6px em botões, campos e itens de menu, de 8px em cards e modais, e sombra leve.
 - **Rótulos de seção:** pequenos, em maiúsculas e em ciano (`ag-eyebrow`, `ag-menu-secao`), como no site.
 - **Ícones:** traço fino de 1,8px no estilo do [Lucide](https://lucide.dev) (licença MIT). Para ícones novos, copie o SVG do Lucide para dentro de `<span class="ag-icone">`.
 - **Prefixo:** todas as classes começam com `ag-` e todas as variáveis com `--ag-`, para não colidir com outros CSS (Bootstrap, Tailwind etc.).

@@ -200,7 +200,12 @@ export default function Dashboard() {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <AppBar position="sticky" color="inherit" elevation={0}>
           <Toolbar sx={{ gap: 1 }}>
-            <IconButton edge="start" aria-label="Abrir menu" onClick={() => setMenuOpen(open => !open)}>
+            <IconButton
+              edge="start"
+              aria-label="Abrir menu"
+              sx={{ display: { md: 'none' } }}
+              onClick={() => setMenuOpen(open => !open)}
+            >
               <MenuIcon />
             </IconButton>
             <Typography sx={{ flex: 1, fontWeight: 600, color: 'secondary.main' }}>
@@ -211,7 +216,7 @@ export default function Dashboard() {
               color="inherit"
               startIcon={<AccountCircleIcon />}
               onClick={e => setAccountAnchor(e.currentTarget)}
-              sx={{ textTransform: 'none', textAlign: 'left', borderRadius: 2, px: 1.5 }}
+              sx={{ textTransform: 'none', textAlign: 'left', px: 1.5 }}
             >
               <Box>
                 <Typography variant="body2" fontWeight={700} lineHeight={1.2}>

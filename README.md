@@ -223,3 +223,33 @@ O repositório contém `.devcontainer/devcontainer.json`: as dependências são
 instaladas e `backend/.env` é criado automaticamente. Execute `npm run dev` e
 abra a porta **Painel web (3000)** (mantenha as portas privadas). O Codespace é
 ambiente de desenvolvimento: banco e pacotes podem ser perdidos ao excluí-lo.
+
+## Login pelo Zitadel (migração do login local)
+
+O login atual (tabela `app_user`) continua sendo o padrão. `AUTH_MODO` liga o Zitadel da central de identidade Agrosys
+e permite migrar sem corte:
+
+1. **`AUTH_MODO=ambos`**: a tela de login ganha o botão **Entrar com Agrosys** (o login local continua). Ao subir, a API
+   publica as permissões na central: `admin`, `canal.test`, `canal.beta`, `canal.production` e `produto.<código>` (uma por produto
+   ativo; o código é normalizado: o produto "PDV Web" vira `produto.pdv-web`). Produto criado ou excluído depois é republicado sozinho.
+2. **Migrar os usuários**: na pasta `backend`, `node --env-file=.env scripts/migrar-zitadel.mjs` simula; com `--aplicar` cria no Zitadel
+   cada usuário ativo com o mesmo login, perfil, produtos, canais **e a mesma senha** (o hash scrypt é importado). Usuários do Hub não entram.
+   Pode rodar de novo.
+3. **`AUTH_MODO=zitadel`**: desliga o login local; usuários e permissões passam a ser geridos na central. Voltar atrás é trocar a variável.
+
+Como funciona: quem entra pelo Zitadel vira (ou atualiza) uma linha em `app_user`, com produtos e canais vindos das roles do token, então
+escopos, tokens de CI e sessões seguem iguais. `admin` no Zitadel = perfil administrador. A sessão do painel continua sendo o cookie
+`central_session`; o Sair também encerra a sessão SSO do Zitadel.
+
+**Registro automático (recomendado):** em vez de copiar credenciais, defina `ZITADEL_REGISTRO_TOKEN` (o `REGISTRO_TOKEN` da central) e o endereço público (`PAINEL_PUBLIC_URL`, ou o `PUBLIC_URL` que o Docker já usa).
+No primeiro boot a API se registra na central, grava as credenciais em `zitadel-app.json` (ao lado da chave de assinatura, no volume de dados) e publica as permissões. Com a central fora do ar ela sobe só com
+o login local e tenta de novo a cada minuto. Se o app já existe na central e o arquivo foi perdido, suba uma vez com `ZITADEL_REGISTRO_ROTACIONAR=1`.
+
+Configuração manual (com `ambos`/`zitadel`): `ZITADEL_URL`, `ZITADEL_CREDENCIAIS` apontando para o `credenciais.json` da central (ou
+`ZITADEL_PROJETO_ID`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, `ZITADEL_SERVICO_USUARIO`, `ZITADEL_SERVICO_SEGREDO`), `CENTRAL_URL`. O endereço de volta do login é deduzido da porta em que você abriu o painel; `PAINEL_PUBLIC_URL` só é
+necessário para fixá-lo (em produção). Atenção: a porta 3000 do host é da central, então o painel Next não deve usá-la ao mesmo tempo. O app `atualizador` no Zitadel precisa ter o redirect `<PAINEL_PUBLIC_URL>/api/v1/auth/zitadel/callback`
+(a central já registra `localhost:3000`, `3001` e `3333`). O Zitadel da central precisa aceitar hash scrypt
+(`ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_VERIFIERS=argon2,bcrypt,scrypt`, já no compose da central).
+
+Limites: usuário desativado localmente continua barrado; desativar na central só vale no próximo login. Tokens de API de CI (`cu_...`) e as
+chaves dos terminais não mudam.

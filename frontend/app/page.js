@@ -7,8 +7,19 @@ export default function Login() {
   const router = useRouter(),
     [user, setUser] = useState('admin'),
     [password, setPassword] = useState(''),
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    // quais logins o servidor liga (AUTH_MODO): local, Zitadel ou os dois
+    [modes, setModes] = useState({ local: true, zitadel: false });
   useEffect(() => {
+    const returned = new URLSearchParams(location.search).get('erro');
+    if (returned) {
+      setError(returned);
+      history.replaceState(null, '', '/');
+    }
+    fetch('/api/v1/auth/modes')
+      .then(response => response.ok && response.json())
+      .then(data => data && setModes(data))
+      .catch(() => {});
     if (syncDebugFromUrl()) {
       router.replace('/dashboard/');
       return;
@@ -62,17 +73,31 @@ export default function Login() {
               Acessar painel
             </Typography>
             {error && <Alert severity="error">{error}</Alert>}
-            <TextField label="Usuário" value={user} onChange={e => setUser(e.target.value)} fullWidth />
-            <TextField
-              label="Senha"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              fullWidth
-            />
-            <Button type="submit" size="large" variant="contained" fullWidth>
-              Entrar
-            </Button>
+            {modes.local && (
+              <>
+                <TextField label="Usuário" value={user} onChange={e => setUser(e.target.value)} fullWidth />
+                <TextField
+                  label="Senha"
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  fullWidth
+                />
+                <Button type="submit" size="large" variant="contained" fullWidth>
+                  Entrar
+                </Button>
+              </>
+            )}
+            {modes.zitadel && (
+              <Button
+                href="/api/v1/auth/zitadel/login"
+                size="large"
+                variant={modes.local ? 'outlined' : 'contained'}
+                fullWidth
+              >
+                Entrar com Agrosys
+              </Button>
+            )}
           </Stack>
         </Paper>
       </Box>

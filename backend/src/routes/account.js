@@ -2,11 +2,13 @@ import crypto from 'node:crypto';
 import { CHANNELS, userScopes, verifyPassword } from '../auth.js';
 import { SESSION_COOKIE, clearSessionCookie, readCookie, setSessionCookie } from '../sessions.js';
 import { bearerToken } from '../terminal-keys.js';
+import { zitadelLogoutUrl } from './zitadel.js';
 
 // Login do painel, perfil e tokens de API do usuario.
 export function registerAccountRoutes(app, ctx) {
-  const { sessions, db, adminAuth, loginIpLimiter, loginUserLimiter } = ctx;
+  const { sessions, db, adminAuth, loginIpLimiter, loginUserLimiter, zitadel } = ctx;
   app.post('/api/v1/auth/login', loginIpLimiter, loginUserLimiter, async (req, res) => {
+    if (!zitadel.allowLocal) return res.status(403).json({ error: 'local_login_disabled' });
     const user = await db.prepare('SELECT * FROM app_user WHERE username=?').get(String(req.body?.user || '').trim());
     if (!user?.active || !verifyPassword(req.body?.password, user.password_hash))
       return res.status(401).json({ error: 'invalid_credentials' });
@@ -19,7 +21,7 @@ export function registerAccountRoutes(app, ctx) {
       await sessions.revoke((await sessions.verify(bearerToken(req) || readCookie(req, SESSION_COOKIE))).sessionId);
     } catch {}
     clearSessionCookie(req, res);
-    res.json({ loggedOut: true });
+    res.json({ loggedOut: true, logoutUrl: zitadelLogoutUrl(req, res, zitadel) });
   });
   app.get('/api/v1/admin/me/api-token', adminAuth, async (req, res) => {
     const token = await db.prepare('SELECT api_token_created_at FROM app_user WHERE id=?').get(req.user.id),

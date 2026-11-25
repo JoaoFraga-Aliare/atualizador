@@ -225,9 +225,11 @@ export default function Dashboard() {
             <Menu anchorEl={accountAnchor} open={!!accountAnchor} onClose={() => setAccountAnchor(null)}>
               <MenuItem
                 onClick={async () => {
-                  await api('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
+                  const done = await api('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => ({}));
                   localStorage.clear();
-                  router.push('/');
+                  // quem entrou pelo Zitadel tambem encerra a sessao SSO de la
+                  if (done?.logoutUrl) location.href = done.logoutUrl;
+                  else router.push('/');
                 }}
               >
                 <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />

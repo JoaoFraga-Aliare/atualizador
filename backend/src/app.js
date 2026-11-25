@@ -32,6 +32,8 @@ import { registerAdminUserRoutes } from './routes/admin-users.js';
 import { registerAdminHubRoutes } from './routes/admin-hub.js';
 import { registerAdminHubProxyRoutes } from './routes/admin-hub-proxy.js';
 import { createHubClient } from './hub-client.js';
+import { createZitadel, readZitadelConfig } from './zitadel.js';
+import { registerZitadelRoutes } from './routes/zitadel.js';
 
 // Monta a API: banco, chave de assinatura, middlewares, rotas e WebSocket.
 export async function createApp() {
@@ -123,7 +125,15 @@ export async function createApp() {
     swaggerUi.serve,
     swaggerUi.setup(openApiDocument, { customSiteTitle: 'Central de Atualização API' })
   );
+  // Login pelo Zitadel (AUTH_MODO): desligado por padrao.
+  const zitadelConfig = readZitadelConfig();
+  if (zitadelConfig.configError) console.warn(`[auth] ${zitadelConfig.configError}`);
+  const zitadel = createZitadel(zitadelConfig, {
+    listProducts: () => db.prepare('SELECT code,name FROM product WHERE active=1 ORDER BY code').all(),
+    log: message => console.log(`[auth] ${message}`)
+  });
   const ctx = {
+    zitadel,
     terminalKeys,
     sessions,
     db,
@@ -147,6 +157,13 @@ export async function createApp() {
     ...backups
   };
   registerTerminalRoutes(app, ctx);
+  registerZitadelRoutes(app, ctx);
+  if (zitadel.configured) {
+    console.log(`[auth] AUTH_MODO=${zitadel.mode}${zitadel.enabled ? ': login pelo Zitadel ligado' : ': aguardando o registro na central'}${zitadel.allowLocal ? ' (login local ativo)' : ' (login local desligado)'}`);
+    // publica as permissoes (admin, canais e produtos); sem credenciais, registra o servico na central primeiro
+    if (zitadel.enabled) zitadel.scheduleSync();
+    else zitadel.register();
+  }
   registerAccountRoutes(app, ctx);
   registerCiUploadRoutes(app, ctx);
   registerAdminTerminalRoutes(app, ctx);

@@ -10,11 +10,12 @@ import { decryptStoredError, errorSignature } from '../lib/error-crypto.js';
 
 // Painel: produtos e publicacoes.
 export function registerAdminReleaseRoutes(app, ctx) {
-  const { db, packagesPath, upload, releaseSigner, adminAuth, allowedProducts } = ctx;
+  const { db, packagesPath, upload, releaseSigner, adminAuth, allowedProducts, zitadel } = ctx;
   app.get('/api/v1/admin/products', adminAuth, async (req, res) => res.json(await allowedProducts(req)));
   app.post('/api/v1/admin/products', adminAuth, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_required' });
     const r = await db.prepare('INSERT INTO product(code,name) VALUES(?,?) RETURNING id').run(req.body.code, req.body.name);
+    zitadel.scheduleSync(); // produto novo vira a permissao "produto.<codigo>" no Zitadel
     res.status(201).json({ id: r.lastInsertRowid });
   });
   app.delete('/api/v1/admin/products/:id', adminAuth, async (req, res) => {
@@ -27,6 +28,7 @@ export function registerAdminReleaseRoutes(app, ctx) {
     )
       return res.status(409).json({ error: 'product_in_use' });
     await db.prepare('DELETE FROM product WHERE id=?').run(product.id);
+    zitadel.scheduleSync();
     res.json({ deleted: true });
   });
   app.get('/api/v1/admin/products/:id/delete-impact', adminAuth, async (req, res) => {

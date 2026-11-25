@@ -241,6 +241,8 @@ Como funciona: quem entra pelo Zitadel vira (ou atualiza) uma linha em `app_user
 escopos, tokens de CI e sessões seguem iguais. `admin` no Zitadel = perfil administrador. A sessão do painel continua sendo o cookie
 `central_session`; o Sair também encerra a sessão SSO do Zitadel.
 
+**Permissões pelo próprio painel:** com o login Agrosys ligado, **Permissão → Usuários** mostra a seção **Usuários Agrosys** com todas as pessoas cadastradas, o perfil, os produtos e os canais de cada uma. O administrador clica em **Editar**, escolhe perfil, produtos e canais, e o painel grava as roles no Zitadel pela central (só as roles deste app). Se a pessoa já entrou antes, o efeito é imediato; se não, vale no primeiro login. O administrador não consegue tirar o próprio acesso de administrador por essa tela. As duas listas (Agrosys e locais) têm campo de busca por nome, login ou e-mail.
+
 **Registro automático (recomendado):** em vez de copiar credenciais, defina `ZITADEL_REGISTRO_TOKEN` (o `REGISTRO_TOKEN` da central) e o endereço público (`PAINEL_PUBLIC_URL`, ou o `PUBLIC_URL` que o Docker já usa).
 No primeiro boot a API se registra na central, grava as credenciais em `zitadel-app.json` (ao lado da chave de assinatura, no volume de dados) e publica as permissões. Com a central fora do ar ela sobe só com
 o login local e tenta de novo a cada minuto. Se o app já existe na central e o arquivo foi perdido, suba uma vez com `ZITADEL_REGISTRO_ROTACIONAR=1`.

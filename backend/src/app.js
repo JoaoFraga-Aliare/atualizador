@@ -129,7 +129,7 @@ export async function createApp() {
   const zitadelConfig = readZitadelConfig();
   if (zitadelConfig.configError) console.warn(`[auth] ${zitadelConfig.configError}`);
   const zitadel = createZitadel(zitadelConfig, {
-    listProducts: () => db.prepare('SELECT code,name FROM product WHERE active=1 ORDER BY code').all(),
+    listProducts: () => db.prepare('SELECT id,code,name FROM product WHERE active=1 ORDER BY code').all(),
     log: message => console.log(`[auth] ${message}`)
   });
   const ctx = {

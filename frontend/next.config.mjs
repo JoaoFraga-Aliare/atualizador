@@ -18,6 +18,9 @@ const extraOrigins = (process.env.DEV_ORIGINS ?? '')
   .map(item => item.trim())
   .filter(Boolean);
 
+// A API de desenvolvimento fica na 3333; API_URL aponta o proxy para outra (por exemplo, para testar sem mexer na 3333).
+const apiOrigin = (process.env.API_URL ?? 'http://127.0.0.1:3333').replace(/\/+$/, '');
+
 export default phase => {
   const development = phase === PHASE_DEVELOPMENT_SERVER;
 
@@ -28,8 +31,8 @@ export default phase => {
       allowedDevOrigins: [...new Set([...localIps, ...extraOrigins])],
       async rewrites() {
         return [
-          { source: '/api/:path*', destination: 'http://127.0.0.1:3333/api/:path*' },
-          { source: '/downloads/:path*', destination: 'http://127.0.0.1:3333/downloads/:path*' }
+          { source: '/api/:path*', destination: `${apiOrigin}/api/:path*` },
+          { source: '/downloads/:path*', destination: `${apiOrigin}/downloads/:path*` }
         ];
       }
     };

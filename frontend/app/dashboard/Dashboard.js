@@ -332,7 +332,7 @@ export default function Dashboard() {
               )}
             {view === 'users' &&
               admin &&
-              section('Usuários', <Users items={data.users} create={() => setUserOpen(true)} done={done} />)}
+              section('Usuários', <Users items={data.users} products={data.products} create={() => setUserOpen(true)} done={done} />)}
             {view === 'hub-clients' &&
               section(null, <HubClients hubMe={hubMe} notify={setMessage} segments={rest} go={go} />)}
             {view === 'hub-docs' && section(null, <HubDocs segments={rest} go={go} />)}

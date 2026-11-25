@@ -74,7 +74,7 @@ export function readZitadelConfig(env = process.env) {
   return config;
 }
 
-// deps: { listProducts(): [{code,name}], log(msg) }
+// deps: { listProducts(): [{id,code,name}], log(msg) }
 export function createZitadel(config, deps) {
   const configured = config.mode !== 'local';
   let ready = configured && !config.pendingRegistration; // com registro pendente, o login Zitadel so liga depois de registrar
@@ -258,6 +258,65 @@ export function createZitadel(config, deps) {
     timer.unref?.();
   };
 
+  // ---------- usuarios do Agrosys: ler e gravar permissoes pela central ----------
+  async function central(method, pathname, body) {
+    const response = await fetch(`${config.centralUrl}${pathname}`, {
+      method,
+      headers: { authorization: `Bearer ${await serviceToken()}`, 'content-type': 'application/json' },
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = text;
+    }
+    if (!response.ok) {
+      const message = json && json.message ? [].concat(json.message).join(' ') : `A central respondeu ${response.status}`;
+      throw Object.assign(new Error(message), { status: response.status === 404 ? 400 : 502 });
+    }
+    return json;
+  }
+
+  // Acesso do painel (admin / produtos / canais) -> chaves de role do app. Administrador = so "admin".
+  function rolesOfAccess(access, products) {
+    if (access.role === 'admin') return ['admin'];
+    return [
+      ...CHANNELS.filter(channel => access.channels.includes(channel)).map(channel => `canal.${channel}`),
+      ...products.filter(p => access.productIds.includes(p.id)).map(p => `produto.${roleSlug(p.code)}`)
+    ];
+  }
+
+  // Pessoas cadastradas no Agrosys e o que cada uma tem NESTE servico, no formato do painel.
+  async function listUsers() {
+    const [list, products] = await Promise.all([central('GET', `/apps/${encodeURIComponent(config.appId)}/usuarios`), deps.listProducts()]);
+    return Promise.all(
+      list.map(async u => {
+        const roles = u.permissoes ?? [];
+        const access = await accessFromRoles(roles, products);
+        return {
+          id: u.id,
+          name: u.nome || u.usuario,
+          username: u.usuario,
+          email: u.email,
+          active: u.ativo,
+          login: String(u.usuario ?? '').split('@')[0].toLowerCase(),
+          role: access.admin ? 'admin' : 'operator',
+          productIds: access.productIds,
+          channels: access.channels,
+          products: products.filter(p => access.productIds.includes(p.id)).map(p => p.name)
+        };
+      })
+    );
+  }
+
+  // Grava (substitui) as permissoes da pessoa neste servico. A central so mexe nas roles deste app.
+  async function setUserAccess(userId, access) {
+    const roles = rolesOfAccess(access, await deps.listProducts());
+    return central('PUT', `/apps/${encodeURIComponent(config.appId)}/usuarios/${encodeURIComponent(userId)}/permissoes`, { permissoes: roles });
+  }
+
   // Registro automatico: pede a central o app OIDC e o usuario de maquina deste servico e guarda as credenciais em arquivo.
   async function register() {
     if (!configured || ready) return ready;
@@ -307,6 +366,8 @@ export function createZitadel(config, deps) {
       return config.mode !== 'zitadel' || !ready;
     },
     register,
+    listUsers,
+    setUserAccess,
     loginUrl,
     finishLogin,
     logoutUrl,
